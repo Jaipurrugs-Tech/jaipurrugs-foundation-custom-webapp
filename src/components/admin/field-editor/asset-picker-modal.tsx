@@ -48,7 +48,8 @@ export function AssetPickerModal({
   onSelectImage: (publicUrl: string) => Promise<void> | void;
 }) {
   const [assets, setAssets] = useState<FormAssetItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Key of the (scope, type) the current `assets` were loaded for; null = nothing loaded yet.
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedStoragePath, setSelectedStoragePath] = useState<string | null>(null);
   const [scope, setScope] = useState<"current_form" | "all_forms">("current_form");
@@ -58,31 +59,44 @@ export function AssetPickerModal({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadAssets = async (currentScope = scope, currentType = typeFilter) => {
-    setIsLoading(true);
-    try {
-      const items = await listFormAssets(formId, currentType, currentScope);
-      setAssets(items);
-      // If currentUrl matches an item in the list, pre-select it
-      if (currentUrl && !selectedStoragePath) {
-        const match = items.find((i) => i.publicUrl === currentUrl);
-        if (match) setSelectedStoragePath(match.storagePath);
-      }
-    } catch {
-      toast.danger("Could not load images from storage.");
-    } finally {
-      setIsLoading(false);
+  const loadKey = `${scope}|${typeFilter}|${assetType}`;
+  const isLoading = isOpen && loadedKey !== loadKey;
+
+  // Reset when the dialog closes, so the next open selects and loads afresh.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen);
+    if (!isOpen) {
+      setSelectedStoragePath(null);
+      setLoadedKey(null);
     }
-  };
+  }
 
   useEffect(() => {
-    if (isOpen) {
-      loadAssets(scope, typeFilter);
-    } else {
-      setSelectedStoragePath(null);
-    }
+    if (!isOpen) return;
+    let cancelled = false;
+    listFormAssets(formId, typeFilter, scope)
+      .then((items) => {
+        if (cancelled) return;
+        setAssets(items);
+        // If currentUrl matches an item in the list, pre-select it (unless something is already picked)
+        if (currentUrl) {
+          const match = items.find((i) => i.publicUrl === currentUrl);
+          if (match) setSelectedStoragePath((prev) => prev ?? match.storagePath);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) toast.danger("Could not load images from storage.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadedKey(loadKey);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // currentUrl only matters for the initial pre-selection, not as a reload trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, scope, typeFilter, assetType]);
+  }, [isOpen, formId, scope, typeFilter, loadKey]);
 
   const handleUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
-  ArrowRight,
   ArrowUpRightFromSquare,
   CircleCheck,
   Globe,
   Pencil,
   Sliders,
 } from "@gravity-ui/icons";
-import { Button, Input, Label, TextField, toast } from "@heroui/react";
+import { Button, Input, Label, toast } from "@heroui/react";
 import { updateFormSettings } from "@/lib/actions/forms";
 import type { FormSettings } from "@/lib/forms/field-types";
 
@@ -47,7 +46,9 @@ export function FormSubmitSettings({
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep local state in sync if external settings change
-  useEffect(() => {
+  const [prevSettings, setPrevSettings] = useState(settings);
+  if (settings !== prevSettings) {
+    setPrevSettings(settings);
     if (settings.submit_button_text !== undefined && settings.submit_button_text !== null) {
       setButtonText(settings.submit_button_text);
     }
@@ -66,7 +67,7 @@ export function FormSubmitSettings({
     if (settings.redirect_delay_seconds !== undefined && settings.redirect_delay_seconds !== null) {
       setRedirectDelay(settings.redirect_delay_seconds);
     }
-  }, [settings]);
+  }
 
   function queueSave(patch: Partial<FormSettings>) {
     const nextSettings: FormSettings = {

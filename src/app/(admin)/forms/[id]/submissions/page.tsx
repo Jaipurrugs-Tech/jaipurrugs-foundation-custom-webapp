@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { notFound } from "next/navigation";
 import { Chip } from "@heroui/react";
 import { createClient } from "@/lib/supabase/server";
@@ -43,7 +44,7 @@ export default async function FormSubmissionsPage({
         <FormNavTabs formId={form.id} />
       </div>
 
-      <SubmissionsTable formId={form.id} initialData={initialData as any} />
+      <SubmissionsTable formId={form.id} initialData={initialData as unknown as ComponentProps<typeof SubmissionsTable>["initialData"]} />
     </div>
   );
 }

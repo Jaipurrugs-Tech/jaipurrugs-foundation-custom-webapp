@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, Link as LinkIcon } from "@gravity-ui/icons";
-import { Button, Chip, Input, TextField, toast } from "@heroui/react";
+import { Button, Chip, toast } from "@heroui/react";
 import type { Enums } from "@/lib/types/supabase";
 import { FormNavTabs } from "./form-nav-tabs";
 

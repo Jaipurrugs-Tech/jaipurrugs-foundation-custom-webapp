@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { ArrowUpRightFromSquare, Check, Copy, Link as LinkIcon, TriangleExclamation } from "@gravity-ui/icons";
 import { Button, toast } from "@heroui/react";
 import { checkSlugAvailability, updateFormSlug } from "@/lib/actions/forms";
 import { sanitizeSlug } from "@/lib/forms/slug";
 
 const CHECK_DEBOUNCE_MS = 350;
+
+// window.location.origin never changes during the page's life, so there is nothing to subscribe to.
+const subscribeNoop = () => () => {};
 
 export function FormSlugEditor({
   formId,
@@ -22,19 +25,21 @@ export function FormSlugEditor({
   const [localSlug, setLocalSlug] = useState(slug);
   const [status, setStatus] = useState<"idle" | "checking" | "available" | "duplicate" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [origin, setOrigin] = useState("");
+  const origin = useSyncExternalStore(
+    subscribeNoop,
+    () => window.location.origin,
+    () => "",
+  );
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
   // Sync external changes (e.g. auto-derived from form title)
-  useEffect(() => {
+  const [prevSlug, setPrevSlug] = useState(slug);
+  if (slug !== prevSlug) {
+    setPrevSlug(slug);
     setLocalSlug(slug);
     setStatus("idle");
     setErrorMessage(null);
-  }, [slug]);
+  }
 
   function handleChange(val: string) {
     const candidate = val.toLowerCase().replace(/[^\w\s-]/g, "").replace(/\s+/g, "-");

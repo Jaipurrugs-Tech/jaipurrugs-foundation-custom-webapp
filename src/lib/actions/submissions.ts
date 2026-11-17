@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveTeamMember } from "@/lib/auth/session";
-import type { Json, Tables } from "@/lib/types/supabase";
+import type { Json } from "@/lib/types/supabase";
 
 export type AnswerInput = {
   field_id: string;

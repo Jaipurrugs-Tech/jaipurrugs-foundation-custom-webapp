@@ -9,14 +9,13 @@ import {
   CircleCheck,
   CircleInfo,
   Comment,
-  Gear,
   House,
   Link as LinkIcon,
   LinkSlash,
   ShieldCheck,
   Xmark,
 } from "@gravity-ui/icons";
-import { Button, Card, Chip, Input, Spinner } from "@heroui/react";
+import { Button, Chip, Input, Spinner } from "@heroui/react";
 import {
   disconnectWhatsAppAction,
   getWhatsAppConnectUrlAction,
@@ -32,6 +31,43 @@ interface SettingsViewProps {
   initialStatus: WhatsAppStatusResult;
   initialOpenAIKeys: OpenAIKeysState;
   userEmail: string;
+}
+
+type Notification = { type: "success" | "error" | "info"; title?: string; message: string };
+
+/** The banner to show for the query params Zernio / Meta redirect back with, if any. */
+function notificationFromRedirect(searchParams: URLSearchParams): Notification | null {
+  const connected = searchParams.get("connected");
+  const accountId = searchParams.get("accountId");
+  const username = searchParams.get("username");
+  const errorParam = searchParams.get("error");
+  const platform = searchParams.get("platform");
+
+  if (connected === "whatsapp") {
+    return {
+      type: "success",
+      title: "WhatsApp Connected Successfully!",
+      message: `Account connected via Zernio${username ? ` (${decodeURIComponent(username)})` : ""}${accountId ? ` [ID: ${accountId}]` : ""}. Refreshing account information...`,
+    };
+  }
+  if (errorParam) {
+    let msg = errorParam;
+    if (errorParam === "connection_cancelled") {
+      msg = "WhatsApp connection process was cancelled before completion.";
+    } else if (errorParam === "one_whatsapp_per_profile") {
+      msg = "This profile already has a connected WhatsApp number. Disconnect it first or use another profile.";
+    } else if (errorParam === "whatsapp_number_already_connected") {
+      msg = "This WhatsApp number is already connected to another profile.";
+    } else if (errorParam === "session_expired") {
+      msg = "The Meta signup session expired. Please start the connection again.";
+    }
+    return {
+      type: "error",
+      title: `Connection Error (${platform || "whatsapp"})`,
+      message: msg,
+    };
+  }
+  return null;
 }
 
 export function SettingsView({ initialStatus, initialOpenAIKeys, userEmail }: SettingsViewProps) {
@@ -56,27 +92,23 @@ export function SettingsView({ initialStatus, initialOpenAIKeys, userEmail }: Se
     message?: string;
   } | null>(null);
 
-  const [notification, setNotification] = useState<{
-    type: "success" | "error" | "info";
-    title?: string;
-    message: string;
-  } | null>(null);
+  const [notification, setNotification] = useState<Notification | null>(null);
 
-  // Parse redirect params on return from Zernio / Meta embedded signup
+  // Return from Zernio / Meta embedded signup: show the outcome once per distinct set of URL
+  // params (set during render, not in an effect), then clear the params and refresh below.
+  const paramsKey = searchParams.toString();
+  const [handledParamsKey, setHandledParamsKey] = useState("");
+  if (paramsKey !== handledParamsKey) {
+    setHandledParamsKey(paramsKey);
+    const fromRedirect = notificationFromRedirect(searchParams);
+    if (fromRedirect) setNotification(fromRedirect);
+  }
+
   useEffect(() => {
     const connected = searchParams.get("connected");
-    const accountId = searchParams.get("accountId");
-    const username = searchParams.get("username");
     const errorParam = searchParams.get("error");
-    const platform = searchParams.get("platform");
 
     if (connected === "whatsapp") {
-      setNotification({
-        type: "success",
-        title: "WhatsApp Connected Successfully!",
-        message: `Account connected via Zernio${username ? ` (${decodeURIComponent(username)})` : ""}${accountId ? ` [ID: ${accountId}]` : ""}. Refreshing account information...`,
-      });
-
       // Clear search parameters from URL cleanly
       router.replace("/settings");
 
@@ -86,23 +118,6 @@ export function SettingsView({ initialStatus, initialOpenAIKeys, userEmail }: Se
         setStatus(fresh);
       });
     } else if (errorParam) {
-      let msg = errorParam;
-      if (errorParam === "connection_cancelled") {
-        msg = "WhatsApp connection process was cancelled before completion.";
-      } else if (errorParam === "one_whatsapp_per_profile") {
-        msg = "This profile already has a connected WhatsApp number. Disconnect it first or use another profile.";
-      } else if (errorParam === "whatsapp_number_already_connected") {
-        msg = "This WhatsApp number is already connected to another profile.";
-      } else if (errorParam === "session_expired") {
-        msg = "The Meta signup session expired. Please start the connection again.";
-      }
-
-      setNotification({
-        type: "error",
-        title: `Connection Error (${platform || "whatsapp"})`,
-        message: msg,
-      });
-
       router.replace("/settings");
     }
   }, [searchParams, router, profileIdInput]);

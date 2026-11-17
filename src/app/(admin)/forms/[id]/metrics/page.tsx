@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { notFound } from "next/navigation";
 import { Chip } from "@heroui/react";
 import { getFormMetricsData } from "@/lib/actions/submissions";
@@ -62,7 +63,7 @@ export default async function FormMetricsPage({ params }: { params: Promise<{ id
               field={field}
               fieldIndex={idx}
               totalSubmissions={data.summary.totalSubmissions}
-              answers={data.answers as any}
+              answers={data.answers as unknown as ComponentProps<typeof FieldMetricCard>["answers"]}
             />
           ))
         )}

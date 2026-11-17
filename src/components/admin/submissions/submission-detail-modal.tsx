@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowDownToLine, FileText, Xmark } from "@gravity-ui/icons";
 import { Button, Chip, Modal } from "@heroui/react";
 import { getSignedUploadUrl } from "@/lib/actions/submissions";
@@ -47,20 +47,23 @@ export function SubmissionDetailModal({
   isOpen: boolean;
   onClose: () => void;
 }) {
-  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
-  const [loadingUrls, setLoadingUrls] = useState(false);
+  // Signed URLs are tied to the submission they were fetched for, so switching submissions
+  // never shows (or waits on) another submission's links.
+  const [signed, setSigned] = useState<{ submissionId: string; urls: Record<string, string> } | null>(null);
+
+  const fileAnswers = useMemo(
+    () =>
+      (submission?.form_answers ?? []).filter((a) => a.field_snapshot?.type === "file_upload" && a.value),
+    [submission],
+  );
+  const signedUrls = signed && signed.submissionId === submission?.id ? signed.urls : {};
+  const loadingUrls = isOpen && fileAnswers.length > 0 && signed?.submissionId !== submission?.id;
 
   useEffect(() => {
-    if (!submission || !isOpen) return;
+    if (!submission || !isOpen || fileAnswers.length === 0) return;
+    let cancelled = false;
 
     // Generate signed URLs for file upload answers
-    const fileAnswers = submission.form_answers.filter(
-      (a) => a.field_snapshot?.type === "file_upload" && a.value,
-    );
-
-    if (fileAnswers.length === 0) return;
-
-    setLoadingUrls(true);
     const fetchUrls = async () => {
       const urlMap: Record<string, string> = {};
       for (const ans of fileAnswers) {
@@ -74,12 +77,14 @@ export function SubmissionDetailModal({
           // ignore failed signed URL fetch
         }
       }
-      setSignedUrls(urlMap);
-      setLoadingUrls(false);
+      if (!cancelled) setSigned({ submissionId: submission.id, urls: urlMap });
     };
 
     fetchUrls();
-  }, [submission, isOpen]);
+    return () => {
+      cancelled = true;
+    };
+  }, [submission, isOpen, fileAnswers]);
 
   if (!submission) return null;
 

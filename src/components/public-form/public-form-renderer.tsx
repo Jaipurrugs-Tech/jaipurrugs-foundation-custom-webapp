@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ArrowLeft, ArrowRight, CircleCheck } from "@gravity-ui/icons";
 import { Button, toast } from "@heroui/react";
 import { saveFeedbackAnswers } from "@/lib/actions/feedback";
@@ -35,6 +35,30 @@ const FEEDBACK_ERRORS: Record<string, string> = {
   invalid_request: "Something went wrong. Please try again.",
 };
 
+// The token lives in localStorage, which only changes through this component: nothing to subscribe to.
+const subscribeNoop = () => () => {};
+
+/** Returns this browser's stored submitter token for the form, creating and storing one on first use. */
+function getOrCreateSubmitterToken(formId: string): string {
+  const storageKey = `form_submitter_token_${formId}`;
+  let token = localStorage.getItem(storageKey);
+  if (!token) {
+    // crypto.randomUUID() requires a secure context (HTTPS or localhost) and is
+    // unavailable on plain HTTP hosts -- fall back to a Math.random()-based
+    // UUID v4, which is fine for a client-side dedup token (not security-critical).
+    token =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+            const r = (Math.random() * 16) | 0;
+            const v = c === "x" ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+          });
+    localStorage.setItem(storageKey, token);
+  }
+  return token;
+}
+
 export function PublicFormRenderer({
   form,
   fields,
@@ -45,7 +69,14 @@ export function PublicFormRenderer({
   feedback?: FeedbackMode;
 }) {
   const isFeedback = Boolean(feedback);
-  const [submitterToken, setSubmitterToken] = useState<string | null>(null);
+  // Client-side submitter token persistence in localStorage for tab recovery. It is read through
+  // useSyncExternalStore so the server render and hydration see `null`, and the client picks the
+  // stored (or freshly created) token right after hydrating.
+  const submitterToken = useSyncExternalStore(
+    subscribeNoop,
+    () => (feedback ? null : getOrCreateSubmitterToken(form.id)),
+    () => null,
+  );
   // Feedback mode has no submission row id on the client; this placeholder only satisfies the field inputs.
   const [submissionId, setSubmissionId] = useState<string | null>(feedback ? "feedback" : null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -55,7 +86,7 @@ export function PublicFormRenderer({
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(feedback?.completed ?? false);
 
-  const settings = (form.settings as FormSettings) ?? {};
+  const settings = useMemo(() => (form.settings as FormSettings) ?? {}, [form.settings]);
   const logoUrl = settings.logo_url ?? null;
   const coverUrl = settings.cover_image_url ?? null;
   const defaultBg = settings.section_defaults?.background;
@@ -65,28 +96,6 @@ export function PublicFormRenderer({
   }, [fields, settings]);
 
   const currentPage = pages[currentPageIndex] ?? pages[0];
-
-  // Client-side submitter token persistence in localStorage for tab recovery
-  useEffect(() => {
-    if (isFeedback) return;
-    const storageKey = `form_submitter_token_${form.id}`;
-    let token = localStorage.getItem(storageKey);
-    if (!token) {
-      // crypto.randomUUID() requires a secure context (HTTPS or localhost) and is
-      // unavailable on plain HTTP hosts -- fall back to a Math.random()-based
-      // UUID v4, which is fine for a client-side dedup token (not security-critical).
-      token =
-        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-              const r = (Math.random() * 16) | 0;
-              const v = c === "x" ? r : (r & 0x3) | 0x8;
-              return v.toString(16);
-            });
-      localStorage.setItem(storageKey, token);
-    }
-    setSubmitterToken(token);
-  }, [form.id, isFeedback]);
 
   // Retrieve or create in_progress submission row
   useEffect(() => {
@@ -230,18 +239,7 @@ export function PublicFormRenderer({
     setIsSaving(true);
     try {
       if (!currentToken) {
-        const storageKey = `form_submitter_token_${form.id}`;
-        currentToken =
-          localStorage.getItem(storageKey) ||
-          (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID()
-            : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-                const r = (Math.random() * 16) | 0;
-                const v = c === "x" ? r : (r & 0x3) | 0x8;
-                return v.toString(16);
-              }));
-        localStorage.setItem(storageKey, currentToken);
-        setSubmitterToken(currentToken);
+        currentToken = getOrCreateSubmitterToken(form.id);
       }
 
       if (!currentSubmissionId) {
