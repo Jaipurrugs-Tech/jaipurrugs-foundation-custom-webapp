@@ -3,6 +3,17 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizePhone } from "@/lib/mastra/phone";
 import type { Database, Json, Tables } from "@/lib/types/supabase";
+import {
+  attachmentPreview,
+  baseMime,
+  extensionFor,
+  INBOX_MEDIA_BUCKET,
+  kindFromMime,
+  parseAttachments,
+  safeFileName,
+  type MessageAttachment,
+} from "@/lib/whatsapp/attachments";
+import { downloadWhatsAppMedia } from "@/lib/zernio/client";
 
 // Turns Zernio inbox webhooks into whatsapp_conversations / whatsapp_messages
 // rows. Runs with the service-role client (webhooks carry no user session).
@@ -51,18 +62,118 @@ function messageKind(message: Rec, metadata: Rec): "text" | "media" | "interacti
   return str(message.text) ? "text" : "other";
 }
 
-function attachmentsOf(message: Rec): Json {
+/** What Zernio told us about each attachment; `url` is used once, to download, and never stored. */
+interface InboundAttachment {
+  meta: MessageAttachment;
+  url: string | null;
+}
+
+function inboundAttachments(message: Rec): InboundAttachment[] {
   if (!Array.isArray(message.attachments)) return [];
-  return message.attachments.map((a) => {
+  return message.attachments.map((a, i) => {
     const att = rec(a);
-    // WhatsApp media URLs need our API key to fetch; keep the type/mime only.
-    return { type: str(att.type) ?? "file", mimeType: str(att.mimeType) };
+    const payload = rec(att.payload);
+    const mimeType = str(att.mimeType);
+    const zernioType = str(att.type);
+    const type =
+      zernioType === "image" || zernioType === "video" || zernioType === "audio" || zernioType === "file" || zernioType === "sticker"
+        ? zernioType
+        : kindFromMime(mimeType);
+    const name = str(payload.filename) ?? str(att.filename) ?? str(att.name);
+    const ext = extensionFor(mimeType);
+    const url = str(att.url);
+    return {
+      url,
+      meta: {
+        type,
+        mimeType,
+        name: safeFileName(name ?? `${type}-${i + 1}${ext ? `.${ext}` : ""}`),
+        size: null,
+        path: null,
+        voice: payload.voice === true ? true : undefined,
+        ...(url ? {} : { error: "WhatsApp didn't include a download link for this file." }),
+      },
+    };
   });
 }
 
-function previewOf(kind: string, body: string | null) {
+/** Where a media URL points, without any query string, for logs. */
+function describeUrl(url: string) {
+  try {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return "(unparseable url)";
+  }
+}
+
+function previewOf(kind: string, body: string | null, attachments: MessageAttachment[]) {
   if (body) return body.slice(0, PREVIEW_LENGTH);
-  return kind === "media" ? "📎 Attachment" : kind === "template" ? "Template message" : "Message";
+  return kind === "media" ? attachmentPreview(attachments) : kind === "template" ? "Template message" : "Message";
+}
+
+export interface InboundMediaJob {
+  messageId: string;
+  accountId: string;
+  items: { index: number; url: string }[];
+}
+
+/**
+ * Copy an inbound message's files into the private inbox-media bucket. Runs after
+ * the webhook has answered (Zernio's 5 s limit), because Meta deletes the bytes
+ * after ~7 days and the Zernio URL needs our API key — so we can't link to it.
+ * Failures are recorded on the attachment so the UI can say why it's missing.
+ */
+export async function saveInboundMedia(admin: Admin, job: InboundMediaJob): Promise<void> {
+  const { data: row } = await admin
+    .from("whatsapp_messages")
+    .select("conversation_id, attachments")
+    .eq("id", job.messageId)
+    .maybeSingle();
+  if (!row) return;
+
+  const attachments = parseAttachments(row.attachments);
+  await Promise.all(
+    job.items.map(async ({ index, url }) => {
+      const att = attachments[index];
+      if (!att) return;
+
+      let result = await downloadWhatsAppMedia(url, job.accountId);
+      // 502s and timeouts are worth one more try; a 400 is Meta having deleted the file.
+      if (!result.success && !result.permanent) result = await downloadWhatsAppMedia(url, job.accountId);
+
+      if (!result.success) {
+        console.error(`[inbox media] download failed for message ${job.messageId}: ${result.error} — ${describeUrl(url)}`);
+        att.error = result.error;
+        return;
+      }
+
+      const mimeType = baseMime(result.contentType) || att.mimeType;
+      const ext = extensionFor(mimeType);
+      // Fix up a synthesised name now that the real content type is known.
+      const name = !att.name.includes(".") && ext ? `${att.name}.${ext}` : att.name;
+      const path = `${row.conversation_id}/${crypto.randomUUID()}-${name}`;
+
+      const { error } = await admin.storage
+        .from(INBOX_MEDIA_BUCKET)
+        .upload(path, result.bytes, { contentType: mimeType || "application/octet-stream", upsert: false });
+      if (error) {
+        console.error(`[inbox media] storage upload failed for message ${job.messageId}: ${error.message}`);
+        att.error = "Could not save the file.";
+        return;
+      }
+      att.mimeType = mimeType || att.mimeType;
+      att.name = name;
+      att.size = result.bytes.byteLength;
+      att.path = path;
+      delete att.error;
+    }),
+  );
+
+  await admin
+    .from("whatsapp_messages")
+    .update({ attachments: attachments as unknown as Json })
+    .eq("id", job.messageId);
 }
 
 async function findOrCreateConversation(admin: Admin, payload: Rec, message: Rec): Promise<Conversation | null> {
@@ -152,6 +263,8 @@ async function ensureLead(admin: Admin, conversation: Conversation): Promise<str
 export interface IngestResult {
   /** Set when an inbound message should get an automatic agent reply. */
   replyTo?: { conversationId: string; messageId: string };
+  /** Set when an inbound message carries files to copy into storage (run after responding). */
+  media?: InboundMediaJob;
 }
 
 async function ingestMessage(admin: Admin, payload: Rec): Promise<IngestResult> {
@@ -167,6 +280,8 @@ async function ingestMessage(admin: Admin, payload: Rec): Promise<IngestResult> 
   const sentAt = str(message.sentAt) ?? new Date().toISOString();
   const kind = messageKind(message, metadata);
   const body = str(message.text);
+  const inbound = inboundAttachments(message);
+  const attachments = inbound.map((a) => a.meta);
 
   // Our own sends are inserted when we send them; Zernio's message.sent echo
   // then only confirms the row (matched on the wamid).
@@ -196,7 +311,7 @@ async function ingestMessage(admin: Admin, payload: Rec): Promise<IngestResult> 
         kind,
         body,
         template_name: str(message.templateName),
-        attachments: attachmentsOf(message),
+        attachments: attachments as unknown as Json,
         status: isIncoming ? "received" : "sent",
         sent_at: sentAt,
       },
@@ -212,7 +327,7 @@ async function ingestMessage(admin: Admin, payload: Rec): Promise<IngestResult> 
   await admin
     .from("whatsapp_conversations")
     .update({
-      ...(isNewer ? { last_message_at: sentAt, last_message_preview: previewOf(kind, body) } : {}),
+      ...(isNewer ? { last_message_at: sentAt, last_message_preview: previewOf(kind, body, attachments) } : {}),
       ...(isIncoming
         ? {
             last_inbound_at:
@@ -223,15 +338,20 @@ async function ingestMessage(admin: Admin, payload: Rec): Promise<IngestResult> 
     })
     .eq("id", conversation.id);
 
-  if (!isIncoming) return {};
+  // Outbound files sent from the WhatsApp Business app / Zernio dashboard are saved too.
+  const items = inbound.flatMap((a, index) => (a.url ? [{ index, url: a.url }] : []));
+  const media: InboundMediaJob | undefined =
+    items.length > 0 ? { messageId: inserted.id, accountId: conversation.zernio_account_id, items } : undefined;
+
+  if (!isIncoming) return { media };
 
   await ensureLead(admin, conversation);
 
   // Meta Business Agent is answering this one on Meta's side; replying too
   // would take the conversation away from it.
-  if (metadata.standby === true) return {};
+  if (metadata.standby === true) return { media };
 
-  return { replyTo: { conversationId: conversation.id, messageId: inserted.id } };
+  return { replyTo: { conversationId: conversation.id, messageId: inserted.id }, media };
 }
 
 const STATUS_BY_EVENT: Record<string, "delivered" | "read" | "failed"> = {

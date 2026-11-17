@@ -10,6 +10,17 @@ import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/lib/types/supabase";
 import { parseBindings, resolveTemplateParams, type MissingValue } from "@/lib/whatsapp/bindings";
 import { renderTemplatePreview, summarizeTemplate, type TemplateSummary } from "@/lib/whatsapp/templates";
+import {
+  ACCEPTED_ATTACHMENT_TYPES,
+  attachmentPreview,
+  baseMime,
+  INBOX_MEDIA_BUCKET,
+  MAX_IMAGE_BYTES,
+  MAX_UPLOAD_BYTES,
+  parseAttachments,
+  safeFileName,
+  type MessageAttachment,
+} from "@/lib/whatsapp/attachments";
 import { serviceWindow } from "@/lib/whatsapp/window";
 import {
   createWebhook,
@@ -33,6 +44,8 @@ export interface InboxThread {
   attributes: LeadAttribute[];
   /** Visits this contact is a guest on, most recent first. */
   visits: ContactVisit[];
+  /** Signed (1 h) URLs for attachments, keyed by storage path: to view inline, and to force a download. */
+  attachmentUrls: Record<string, { view: string; download: string }>;
 }
 
 export interface ContactVisit {
@@ -111,15 +124,99 @@ export async function getInboxThread(conversationId: string): Promise<InboxThrea
     return Array.isArray(list) ? list : list ? [list] : [];
   });
 
+  const orderedMessages = (messages ?? []).reverse();
+  const attachmentUrls = await signAttachmentUrls(supabase, orderedMessages);
+
   return {
     conversation,
-    messages: (messages ?? []).reverse(),
+    messages: orderedMessages,
     lead: leadResult.data ?? null,
     leadLists,
     memories: memoriesResult.data ?? [],
     attributes: attributes ?? [],
     visits,
+    attachmentUrls,
   };
+}
+
+const ATTACHMENT_URL_TTL_SECONDS = 3600;
+
+/** Short-lived signed URLs for every saved attachment in the thread (the bucket is private). */
+async function signAttachmentUrls(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  messages: InboxMessage[],
+  skipPaths: ReadonlySet<string> = new Set(),
+) {
+  const files = messages
+    .flatMap((m) => parseAttachments(m.attachments))
+    .flatMap((a) => (a.path && !skipPaths.has(a.path) ? [{ path: a.path, name: a.name }] : []));
+  const urls: InboxThread["attachmentUrls"] = {};
+  if (files.length === 0) return urls;
+
+  const bucket = supabase.storage.from(INBOX_MEDIA_BUCKET);
+  const paths = files.map((f) => f.path);
+  const [view, ...downloads] = await Promise.all([
+    bucket.createSignedUrls(paths, ATTACHMENT_URL_TTL_SECONDS),
+    // `download` is per call, so each file gets its own to carry its real name.
+    ...files.map((f) => bucket.createSignedUrl(f.path, ATTACHMENT_URL_TTL_SECONDS, { download: f.name })),
+  ]);
+  files.forEach((f, i) => {
+    const viewUrl = view.data?.find((d) => d.path === f.path)?.signedUrl;
+    const downloadUrl = downloads[i]?.data?.signedUrl;
+    if (viewUrl) urls[f.path] = { view: viewUrl, download: downloadUrl ?? viewUrl };
+  });
+  return urls;
+}
+
+/**
+ * Lightweight re-fetch of a conversation's latest messages for the live thread view (no page reload).
+ * Only attachments whose paths the client doesn't already hold get fresh signed URLs.
+ */
+export async function getThreadMessages(
+  conversationId: string,
+  haveUrlPaths: string[] = [],
+): Promise<{ messages: InboxMessage[]; attachmentUrls: InboxThread["attachmentUrls"] } | null> {
+  await requireActiveTeamMember();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("whatsapp_messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("sent_at", { ascending: false })
+    .limit(MESSAGE_PAGE);
+  if (error) return null;
+  const messages = (data ?? []).reverse();
+  const attachmentUrls = await signAttachmentUrls(supabase, messages, new Set(haveUrlPaths));
+  return { messages, attachmentUrls };
+}
+
+/** Signed URLs for the attachments on specific messages (used when a live message arrives with files). */
+export async function getAttachmentUrls(
+  conversationId: string,
+  messageIds: string[],
+  haveUrlPaths: string[] = [],
+): Promise<InboxThread["attachmentUrls"]> {
+  await requireActiveTeamMember();
+  if (messageIds.length === 0) return {};
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("whatsapp_messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .in("id", messageIds);
+  return signAttachmentUrls(supabase, data ?? [], new Set(haveUrlPaths));
+}
+
+/** The conversation list, re-fetched for the live inbox (fallback when realtime is unavailable). */
+export async function getConversationList(): Promise<InboxConversation[] | null> {
+  await requireActiveTeamMember();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("whatsapp_conversations")
+    .select("*")
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(200);
+  return error ? null : data;
 }
 
 export async function markConversationRead(conversationId: string): Promise<void> {
@@ -177,6 +274,84 @@ export async function sendStaffMessage(conversationId: string, text: string): Pr
     .update({
       last_message_at: now,
       last_message_preview: parsed.data.slice(0, 120),
+      unread_count: 0,
+      ai_enabled: false,
+      needs_human: false,
+      handoff_reason: null,
+    })
+    .eq("id", conversation.id);
+  return {};
+}
+
+/**
+ * Send one file from a team member, inside the 24-hour window. The file is
+ * uploaded to the private bucket, then Zernio fetches it through a 10-minute
+ * signed URL. Like a text reply, it pauses the AI for this chat.
+ */
+export async function sendStaffAttachment(conversationId: string, formData: FormData): Promise<Result> {
+  const { email } = await requireActiveTeamMember();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file to send." };
+
+  const mime = baseMime(file.type);
+  const accepted = ACCEPTED_ATTACHMENT_TYPES[mime];
+  if (!accepted) {
+    const formats = [...new Set(Object.values(ACCEPTED_ATTACHMENT_TYPES).map((t) => t.label))].join(", ");
+    return { error: `WhatsApp can't send ${file.type ? `${file.type} files` : "this kind of file"}. Supported formats: ${formats}.` };
+  }
+  if (file.size > MAX_UPLOAD_BYTES) return { error: "That file is over 10 MB." };
+  if (accepted.kind === "image" && file.size > MAX_IMAGE_BYTES) return { error: "WhatsApp images can be at most 5 MB." };
+
+  const { supabase, conversation } = await loadConversation(conversationId);
+  if (!conversation) return { error: "Conversation not found." };
+  if (!serviceWindow(conversation.last_inbound_at).open) {
+    return { error: "The 24-hour window is closed — only an approved template can be sent now." };
+  }
+
+  const name = safeFileName(file.name);
+  const path = `${conversation.id}/${randomUUID()}-${name}`;
+  const bucket = supabase.storage.from(INBOX_MEDIA_BUCKET);
+  const { error: uploadError } = await bucket.upload(path, file, { contentType: mime, upsert: false });
+  if (uploadError) return { error: "Could not upload the file." };
+
+  const { data: signed } = await bucket.createSignedUrl(path, 600);
+  if (!signed?.signedUrl) return { error: "Could not prepare the file for sending." };
+
+  const sent = await sendInboxMessage({
+    accountId: conversation.zernio_account_id,
+    conversationId: conversation.zernio_conversation_id,
+    attachment: { url: signed.signedUrl, type: accepted.kind, name },
+    idempotencyKey: `staff-${randomUUID()}`,
+  });
+
+  // On failure the file is deleted below, so the failed row must not point at it.
+  const attachment: MessageAttachment = { type: accepted.kind, mimeType: mime, name, size: file.size, path: sent.success ? path : null };
+  const now = new Date().toISOString();
+  await supabase.from("whatsapp_messages").insert({
+    conversation_id: conversation.id,
+    platform_message_id: sent.messageId ?? null,
+    direction: "outbound",
+    sender_type: "staff",
+    sent_by: email,
+    kind: "media",
+    body: null,
+    attachments: [attachment] as unknown as Tables<"whatsapp_messages">["attachments"],
+    status: sent.success ? "sent" : "failed",
+    error: sent.success ? null : (sent.error ?? "Send failed"),
+    sent_at: now,
+  });
+
+  if (!sent.success) {
+    // Nothing references the file now, so don't leave it behind.
+    await bucket.remove([path]);
+    return { error: `WhatsApp didn't accept the file: ${sent.error}` };
+  }
+
+  await supabase
+    .from("whatsapp_conversations")
+    .update({
+      last_message_at: now,
+      last_message_preview: attachmentPreview([attachment]),
       unread_count: 0,
       ai_enabled: false,
       needs_human: false,

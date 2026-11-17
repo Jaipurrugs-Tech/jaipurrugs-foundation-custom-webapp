@@ -18,6 +18,8 @@ const ADMIN_PATH_PREFIXES = [
   "/partners",
   "/facilitators",
   "/messaging",
+  "/services",
+  "/invoices",
 ];
 
 function isAdminPath(pathname: string) {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Button, Chip, SearchField, Switch, toast } from "@heroui/react";
 import {
+  getConversationList,
   markConversationRead,
   registerInboxWebhook,
   setAutoReplyEnabled,
@@ -93,7 +94,7 @@ function InboxToolbar({
             <Switch.Control>
               <Switch.Thumb />
             </Switch.Control>
-            {agentConfigured ? "AI auto-replies" : "AI off (OPENAI_API_KEY missing)"}
+            {agentConfigured ? "AI auto-replies" : "AI off (no OpenAI key — add one in Settings)"}
           </Switch.Content>
         </Switch>
       </div>
@@ -101,8 +102,12 @@ function InboxToolbar({
   );
 }
 
+function sortConversations(list: InboxConversation[]) {
+  return [...list].sort((a, b) => (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""));
+}
+
 export function InboxView({
-  conversations,
+  conversations: serverConversations,
   thread,
   autoReplyEnabled,
   agentConfigured,
@@ -118,29 +123,81 @@ export function InboxView({
   const pathname = usePathname();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [conversations, setConversations] = useState(serverConversations);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeId = thread?.conversation.id ?? null;
 
-  // Live updates: any change to conversations, messages or memory notes
-  // re-renders the page from the server (RLS still applies to the events).
+  // A server render (navigation, memory change, toggle) is authoritative.
+  const [seenServer, setSeenServer] = useState(serverConversations);
+  if (seenServer !== serverConversations) {
+    setSeenServer(serverConversations);
+    setConversations(serverConversations);
+  }
+
+  // Live updates without reloading the page: conversation rows are patched in place from the realtime
+  // payload (RLS still applies), and the open thread subscribes to its own messages (see ThreadPanel).
+  // If realtime isn't connected we poll instead, and we always re-sync when the tab regains focus.
   useEffect(() => {
     const supabase = createClient();
-    const refresh = () => {
-      if (refreshTimer.current) clearTimeout(refreshTimer.current);
-      refreshTimer.current = setTimeout(() => router.refresh(), 300);
+    let subscribed = false;
+    let cancelled = false;
+
+    const resync = async () => {
+      const list = await getConversationList();
+      if (list && !cancelled) setConversations(list);
     };
+    // Memory notes only feed the contact panel, so a soft server refresh (state is preserved) is enough.
+    const refreshProfile = () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = setTimeout(() => router.refresh(), 500);
+    };
+
     const channel = supabase
       .channel("whatsapp-inbox")
-      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_conversations" }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_messages" }, refresh)
-      .on("postgres_changes", { event: "*", schema: "public", table: "lead_memories" }, refresh)
-      .subscribe();
+      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_conversations" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          const id = (payload.old as { id?: string }).id;
+          if (id) setConversations((prev) => prev.filter((c) => c.id !== id));
+          return;
+        }
+        const row = payload.new as InboxConversation;
+        setConversations((prev) => sortConversations([...prev.filter((c) => c.id !== row.id), row]));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "lead_memories" }, refreshProfile)
+      .subscribe((status) => {
+        const wasSubscribed = subscribed;
+        subscribed = status === "SUBSCRIBED";
+        // Catch anything missed while the socket was down.
+        if (subscribed && !wasSubscribed) void resync();
+      });
+
+    const poll = setInterval(() => {
+      if (!subscribed && document.visibilityState === "visible") void resync();
+    }, 5000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void resync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onVisible);
+
     return () => {
+      cancelled = true;
+      clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onVisible);
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
       supabase.removeChannel(channel);
     };
   }, [router]);
+
+  // The chat that is open is being read, so new inbound messages in it never count as unread.
+  const activeUnread = conversations.find((c) => c.id === activeId)?.unread_count ?? 0;
+  useEffect(() => {
+    if (activeId && activeUnread > 0) void markConversationRead(activeId);
+  }, [activeId, activeUnread]);
+
+  const liveConversation = conversations.find((c) => c.id === activeId) ?? thread?.conversation ?? null;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -247,8 +304,13 @@ export function InboxView({
 
         {/* Thread */}
         <section className="flex min-h-0 flex-col">
-          {thread ? (
-            <ThreadPanel key={thread.conversation.id} autoReplyEnabled={autoReplyEnabled && agentConfigured} thread={thread} />
+          {thread && liveConversation ? (
+            <ThreadPanel
+              key={thread.conversation.id}
+              autoReplyEnabled={autoReplyEnabled && agentConfigured}
+              conversation={liveConversation}
+              thread={thread}
+            />
           ) : (
             <div className="m-auto text-sm text-muted">Select a conversation.</div>
           )}

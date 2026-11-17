@@ -1,7 +1,7 @@
 import "server-only";
 import { Agent } from "@mastra/core/agent";
 import { z } from "zod";
-import { AGENT_MODEL } from "@/lib/mastra/agent";
+import { resolveAgentModel } from "@/lib/mastra/agent";
 import { REVIEW_SOURCE_LABELS, type ReviewSource } from "./sources";
 
 // OpenAI structured output needs every field present, so "optional" values are nullable.
@@ -52,7 +52,7 @@ export async function organizeReviews(input: {
     id: "jrf-review-organizer",
     name: "Review organizer",
     instructions: INSTRUCTIONS,
-    model: AGENT_MODEL,
+    model: resolveAgentModel,
   });
 
   const today = new Date().toISOString().slice(0, 10);

@@ -14,6 +14,7 @@ export * from "./types";
 
 const ZERNIO_BASE_URL = "https://zernio.com/api/v1";
 const TEMPLATE_SEND_TIMEOUT_MS = 20_000;
+const MEDIA_DOWNLOAD_TIMEOUT_MS = 25_000;
 
 export function getZernioConfig(profileIdOverride?: string): ZernioConfig {
   const apiKey = process.env.ZERNIO_API_KEY?.trim();
@@ -577,7 +578,12 @@ export async function deleteWhatsAppTemplate(params: {
 export async function sendInboxMessage(params: {
   accountId: string;
   conversationId: string;
-  text: string;
+  text?: string;
+  /**
+   * One file, fetched by Zernio from a publicly reachable URL (we pass a short-lived signed URL).
+   * `name` is the display name WhatsApp shows for documents.
+   */
+  attachment?: { url: string; type: "image" | "video" | "audio" | "file"; name?: string };
   /** Makes a retried send safe: same key + body replays instead of resending. */
   idempotencyKey: string;
 }): Promise<{ success: boolean; messageId?: string; error?: string }> {
@@ -597,7 +603,17 @@ export async function sendInboxMessage(params: {
           "Content-Type": "application/json",
           "Idempotency-Key": params.idempotencyKey,
         },
-        body: JSON.stringify({ accountId: params.accountId, message: params.text }),
+        body: JSON.stringify({
+          accountId: params.accountId,
+          ...(params.text ? { message: params.text } : {}),
+          ...(params.attachment
+            ? {
+                attachmentUrl: params.attachment.url,
+                attachmentType: params.attachment.type,
+                ...(params.attachment.type === "file" && params.attachment.name ? { attachmentName: params.attachment.name } : {}),
+              }
+            : {}),
+        }),
       },
     );
 
@@ -610,6 +626,52 @@ export async function sendInboxMessage(params: {
     return { success: true, messageId: payload.messageId ? String(payload.messageId) : undefined };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Failed to send message" };
+  }
+}
+
+/**
+ * Download inbound WhatsApp media. `url` is the attachment URL from the webhook
+ * (GET /v1/whatsapp/media/{mediaId}); it needs our API key, and Meta deletes the
+ * bytes after about 7 days (400 = gone for good, don't retry).
+ * See https://docs.zernio.com/whatsapp/get-whatsapp-media
+ */
+export async function downloadWhatsAppMedia(
+  url: string,
+  accountId: string,
+): Promise<{ success: true; bytes: ArrayBuffer; contentType: string | null } | { success: false; error: string; permanent: boolean }> {
+  const config = getZernioConfig();
+  if (!config.isConfigured || !config.apiKey) {
+    return { success: false, error: "ZERNIO_API_KEY is not configured.", permanent: false };
+  }
+
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    return { success: false, error: "Invalid media URL.", permanent: true };
+  }
+  // Only ever send the API key to Zernio itself.
+  if (target.protocol !== "https:" || !/(^|\.)zernio\.com$/i.test(target.hostname)) {
+    return { success: false, error: "Unexpected media host.", permanent: true };
+  }
+  if (!target.searchParams.has("accountId")) target.searchParams.set("accountId", accountId);
+
+  try {
+    const response = await fetch(target.toString(), {
+      headers: { Authorization: `Bearer ${config.apiKey}` },
+      signal: AbortSignal.timeout(MEDIA_DOWNLOAD_TIMEOUT_MS),
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return {
+        success: false,
+        error: response.status === 400 ? "WhatsApp no longer has this file." : `Download failed (HTTP ${response.status}).`,
+        permanent: response.status === 400 || response.status === 404,
+      };
+    }
+    return { success: true, bytes: await response.arrayBuffer(), contentType: response.headers.get("content-type") };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Download failed.", permanent: false };
   }
 }
 

@@ -4,6 +4,12 @@ export type VisitRow = Tables<"visits">;
 
 export type VisitSale = Pick<Tables<"visit_sales">, "id" | "channel" | "invoice_id" | "amount">;
 
+/** A proforma invoice linked to a visit. Issued / paid ones make up the visit's Rural Experience revenue. */
+export type VisitInvoice = Pick<
+  Tables<"proforma_invoices">,
+  "id" | "pi_number" | "pi_date" | "status" | "taxable_total" | "grand_total"
+>;
+
 /** A visit with the relations the list and calendar views need. */
 export type VisitListItem = VisitRow & {
   villageIds: string[];
@@ -11,6 +17,8 @@ export type VisitListItem = VisitRow & {
   guestCount: number;
   /** JR sales / JR Farms sales invoices attributed to the visit. */
   sales: VisitSale[];
+  /** Proforma invoices raised for the visit (its charges are managed there). */
+  invoices: VisitInvoice[];
   /** The guest marked as the visit's primary point of contact, shown in the trips grid. */
   primaryGuest: VisitPrimaryGuest | null;
 };
@@ -55,8 +63,17 @@ export type VisitGuestItem = {
   lastMessageAt: string | null;
 };
 
-export type LeadSearchResult = {
+/** An existing lead whose phone number matches what is being typed in the guest form. */
+export type LeadMatch = {
   id: string;
   name: string | null;
   phone: string;
+  email: string | null;
+  optedOut: boolean;
+  /** Already a guest on this visit, so it can't be added again. */
+  onVisit: boolean;
+  /** How many visits this contact is already a guest on (any visit). */
+  visitCount: number;
+  /** Stored with a different country code than the one picked in the form. */
+  codeMismatch: boolean;
 };

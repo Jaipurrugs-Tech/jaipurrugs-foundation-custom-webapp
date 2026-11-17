@@ -69,7 +69,7 @@ export async function replyWithAgent(
   // Test seams: a mock model and a shorter debounce. Production uses the defaults.
   options: { model?: NonNullable<Parameters<typeof createFoundationAgent>[1]>["model"]; debounceMs?: number } = {},
 ) {
-  if (!options.model && !isAgentConfigured()) return;
+  if (!options.model && !(await isAgentConfigured())) return;
 
   await sleep(options.debounceMs ?? REPLY_DEBOUNCE_MS);
   if (!(await isLatestInbound(admin, trigger.conversationId, trigger.messageId))) return;

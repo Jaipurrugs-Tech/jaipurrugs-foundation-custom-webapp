@@ -1,5 +1,6 @@
 import "server-only";
 import { Agent } from "@mastra/core/agent";
+import { isOpenAIConfigured, resolveOpenAIKey } from "@/lib/openai/keys";
 import type { AgentToolContext } from "@/lib/mastra/context";
 import { createLeadLoader, type LeadSnapshot } from "@/lib/mastra/lead-context";
 import { redactPhone } from "@/lib/mastra/redact";
@@ -12,15 +13,29 @@ import { createGetUserSubmissionsTool } from "@/lib/mastra/tools/submissions-too
 import { createVisitTools } from "@/lib/mastra/tools/visits-tool";
 import { createWhatsAppTemplateTools } from "@/lib/mastra/tools/whatsapp-tool";
 
-// Mastra's model router resolves "openai/<model>" with OPENAI_API_KEY — no
-// provider package import needed.
+// Mastra's model router resolves "openai/<model>"; the API key comes from
+// Settings → Configuration (Vault) with OPENAI_API_KEY as the fallback — see
+// lib/openai/keys.ts. No provider package import needed.
 export const AGENT_MODEL = process.env.AGENT_MODEL?.trim() || "openai/gpt-5-mini";
 
 // Collect a detail, save it, then send a template can take several tool steps.
 export const AGENT_MAX_STEPS = 8;
 
-export function isAgentConfigured() {
-  return Boolean(process.env.OPENAI_API_KEY?.trim());
+export async function isAgentConfigured() {
+  return isOpenAIConfigured();
+}
+
+/**
+ * Model config resolved on every agent call, so a key added, switched or
+ * removed in Settings takes effect immediately without a restart. Only OpenAI
+ * models get the managed key; any other provider keeps using its own env var.
+ */
+export async function resolveAgentModel() {
+  if (!AGENT_MODEL.startsWith("openai/")) return AGENT_MODEL as `${string}/${string}`;
+  const resolved = await resolveOpenAIKey();
+  return resolved
+    ? { id: AGENT_MODEL as `${string}/${string}`, apiKey: resolved.key }
+    : (AGENT_MODEL as `${string}/${string}`);
 }
 
 function describeMemory(snapshot: LeadSnapshot, phone: string) {
@@ -107,7 +122,7 @@ export function createFoundationAgent(
     name: "Jaipur Rugs Foundation Assistant",
     // Resolved per turn so the contact's latest name, memory notes and visits are included.
     instructions: async () => buildInstructions(ctx, await leads.get(), await visits.get()),
-    model: options.model ?? AGENT_MODEL,
+    model: options.model ?? resolveAgentModel,
     tools: {
       getUserSubmissions: createGetUserSubmissionsTool(ctx),
       searchKnowledgeBase: createSearchKnowledgeBaseTool(ctx),

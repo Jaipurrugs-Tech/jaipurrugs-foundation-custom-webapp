@@ -95,7 +95,7 @@ export function parseDashboardStats(raw: unknown, feedback?: unknown): Dashboard
 /** Totals for one revenue source over the filtered, completed visits. */
 export interface RevenueStream {
   amount: number;
-  /** Invoices recorded (Rural Experience: visits with an invoice ID). */
+  /** Invoices recorded (Rural Experience: the visits' issued / paid proforma invoices). */
   invoices: number;
   /** Visits that brought in revenue from this source. */
   visits: number;

@@ -25,13 +25,16 @@ import {
   type WhatsAppStatusResult,
 } from "@/lib/actions/zernio";
 import { DEFAULT_ZERNIO_PROFILE_ID, type WhatsAppAccount } from "@/lib/zernio/types";
+import type { OpenAIKeysState } from "@/lib/openai/types";
+import { OpenAIKeysCard } from "@/components/admin/settings/openai-keys-card";
 
 interface SettingsViewProps {
   initialStatus: WhatsAppStatusResult;
+  initialOpenAIKeys: OpenAIKeysState;
   userEmail: string;
 }
 
-export function SettingsView({ initialStatus, userEmail }: SettingsViewProps) {
+export function SettingsView({ initialStatus, initialOpenAIKeys, userEmail }: SettingsViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -644,6 +647,9 @@ export function SettingsView({ initialStatus, userEmail }: SettingsViewProps) {
               </div>
             </div>
           </div>
+
+          {/* OpenAI API keys (AI agent, inbox auto-replies, review organiser) */}
+          <OpenAIKeysCard initialState={initialOpenAIKeys} />
         </div>
       )}
 

@@ -166,7 +166,7 @@ export function ChatSimulator({
 
         <div className="ml-auto flex flex-wrap items-center gap-2 pb-1">
           <Chip color={status.openaiConfigured ? "success" : "danger"} size="sm" variant="soft">
-            {status.openaiConfigured ? status.model : "OPENAI_API_KEY missing"}
+            {status.openaiConfigured ? status.model : "OpenAI key missing"}
           </Chip>
           <Chip color={status.whatsapp.configured ? "success" : "warning"} size="sm" variant="soft">
             {status.whatsapp.configured

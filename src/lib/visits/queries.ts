@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/supabase";
-import type { VisitListItem, VisitPrimaryGuest, VisitReference, VisitRow, VisitSale } from "./types";
+import type { VisitInvoice, VisitListItem, VisitPrimaryGuest, VisitReference, VisitRow, VisitSale } from "./types";
 
 type Client = SupabaseClient<Database>;
 
@@ -34,13 +34,20 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
   const experiencesQuery = supabase.from("visit_experiences").select("visit_id, experience_id");
   const guestsQuery = supabase.from("visit_guests").select("id, visit_id, is_primary, leads(name, phone, attributes)");
   const salesQuery = supabase.from("visit_sales").select("id, visit_id, channel, invoice_id, amount").order("created_at");
+  const invoicesQuery = supabase
+    .from("proforma_invoices")
+    .select("id, visit_id, pi_number, pi_date, status, taxable_total, grand_total")
+    .not("visit_id", "is", null)
+    .order("pi_date");
 
-  const [{ data: villageRows }, { data: experienceRows }, { data: guestRows }, { data: saleRows }] = await Promise.all([
-    scoped ? villagesQuery.in("visit_id", scoped) : villagesQuery,
-    scoped ? experiencesQuery.in("visit_id", scoped) : experiencesQuery,
-    scoped ? guestsQuery.in("visit_id", scoped) : guestsQuery,
-    scoped ? salesQuery.in("visit_id", scoped) : salesQuery,
-  ]);
+  const [{ data: villageRows }, { data: experienceRows }, { data: guestRows }, { data: saleRows }, { data: invoiceRows }] =
+    await Promise.all([
+      scoped ? villagesQuery.in("visit_id", scoped) : villagesQuery,
+      scoped ? experiencesQuery.in("visit_id", scoped) : experiencesQuery,
+      scoped ? guestsQuery.in("visit_id", scoped) : guestsQuery,
+      scoped ? salesQuery.in("visit_id", scoped) : salesQuery,
+      scoped ? invoicesQuery.in("visit_id", scoped) : invoicesQuery,
+    ]);
 
   const villageIds = new Map<string, string[]>();
   for (const row of villageRows ?? []) {
@@ -53,6 +60,10 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
   const sales = new Map<string, VisitSale[]>();
   for (const { visit_id, ...sale } of saleRows ?? []) {
     sales.set(visit_id, [...(sales.get(visit_id) ?? []), sale]);
+  }
+  const invoices = new Map<string, VisitInvoice[]>();
+  for (const { visit_id, ...invoice } of invoiceRows ?? []) {
+    if (visit_id) invoices.set(visit_id, [...(invoices.get(visit_id) ?? []), invoice]);
   }
   const guestCounts = new Map<string, number>();
   const primaryGuests = new Map<string, VisitPrimaryGuest>();
@@ -75,6 +86,7 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
     experienceIds: experienceIds.get(visit.id) ?? [],
     guestCount: guestCounts.get(visit.id) ?? 0,
     sales: sales.get(visit.id) ?? [],
+    invoices: invoices.get(visit.id) ?? [],
     primaryGuest: primaryGuests.get(visit.id) ?? null,
   }));
 }

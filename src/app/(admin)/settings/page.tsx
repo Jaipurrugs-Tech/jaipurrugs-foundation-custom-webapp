@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { requireActiveTeamMember } from "@/lib/auth/session";
+import { getOpenAIKeysAction } from "@/lib/actions/openai-keys";
 import { getWhatsAppStatusAction } from "@/lib/actions/zernio";
 import { SettingsView } from "@/components/admin/settings/settings-view";
 import { Spinner } from "@heroui/react";
@@ -8,7 +9,10 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const { email } = await requireActiveTeamMember();
-  const initialStatus = await getWhatsAppStatusAction();
+  const [initialStatus, initialOpenAIKeys] = await Promise.all([
+    getWhatsAppStatusAction(),
+    getOpenAIKeysAction(),
+  ]);
 
   return (
     <Suspense
@@ -18,7 +22,7 @@ export default async function SettingsPage() {
         </div>
       }
     >
-      <SettingsView initialStatus={initialStatus} userEmail={email} />
+      <SettingsView initialStatus={initialStatus} initialOpenAIKeys={initialOpenAIKeys} userEmail={email} />
     </Suspense>
   );
 }

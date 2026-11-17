@@ -17,8 +17,10 @@ import {
   Person,
   Persons,
   PersonWorker,
+  Receipt,
   SquareListUl,
   Suitcase,
+  TagDollar,
 } from "@gravity-ui/icons";
 import { Avatar, Button, Dropdown, Header, Label, Separator, Toast } from "@heroui/react";
 import { signOut } from "@/lib/actions/auth";
@@ -29,7 +31,6 @@ const NAV_GROUPS: { label?: string; items: { href: string; label: string; icon: 
     items: [
       { href: "/dashboard", label: "Dashboard", icon: House },
       { href: "/inbox", label: "Inbox", icon: Comment },
-      { href: "/forms", label: "Forms", icon: SquareListUl },
       { href: "/leads", label: "Leads", icon: Person },
       { href: "/templates", label: "WhatsApp Templates", icon: FileText },
       { href: "/agents", label: "AI Agent", icon: Comments },
@@ -39,6 +40,8 @@ const NAV_GROUPS: { label?: string; items: { href: string; label: string; icon: 
     label: "Operations",
     items: [
       { href: "/trips", label: "Trips", icon: Suitcase },
+      { href: "/services", label: "Services", icon: TagDollar },
+      { href: "/invoices", label: "Proforma invoices", icon: Receipt },
       { href: "/villages", label: "Villages", icon: MapPin },
       { href: "/partners", label: "Partners", icon: Briefcase },
       { href: "/facilitators", label: "Facilitators", icon: PersonWorker },
@@ -46,7 +49,10 @@ const NAV_GROUPS: { label?: string; items: { href: string; label: string; icon: 
     ],
   },
   {
-    items: [{ href: "/team", label: "Team", icon: Persons }],
+    items: [
+      { href: "/team", label: "Team", icon: Persons },
+      { href: "/forms", label: "Forms", icon: SquareListUl },
+    ],
   },
 ];
 

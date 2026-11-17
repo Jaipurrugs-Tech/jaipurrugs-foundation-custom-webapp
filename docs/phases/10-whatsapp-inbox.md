@@ -57,16 +57,23 @@ The inbox test suite checks this across every model call: the number appears in 
 - The agent adds notes with `rememberAboutContact` and removes outdated ones with `forgetAboutContact` (by number). Staff can add, edit and delete any note.
 - At most 50 notes per contact.
 
+## Attachments
+
+- **Receiving:** the webhook stores each file's type, MIME type, name and size on the message, answers `200`, then (via `after()`) copies the bytes into the **private** `inbox-media` bucket (`saveInboundMedia` in `src/lib/inbox/ingest.ts`). This has to happen on receipt: the Zernio media URL needs our API key and Meta deletes the file after about 7 days. If the file is already gone or the copy fails, the bubble still shows name and format with the reason.
+- **Showing:** `message-attachments.tsx` renders images, video and audio inline, and documents as a card with name, a **format chip** (PDF, DOCX, JPG…) and size, plus a Download link. The chat list preview shows the format too (e.g. "📎 PDF"). Access is by 1-hour signed URLs only.
+- **Sending:** the paperclip in the composer (inside the 24h window only). Allowed formats and limits live in `src/lib/whatsapp/attachments.ts`: JPG/PNG (5 MB), MP4/3GP, AAC/M4A/MP3/AMR/OGG, PDF, DOC(X), XLS(X), PPT(X), TXT (10 MB overall). The file is uploaded to `inbox-media`, and Zernio fetches it via a 10-minute signed URL (`attachmentUrl` / `attachmentType` / `attachmentName`). Typed text goes as a separate message after the file. Like any staff reply, it pauses the AI for the chat.
+- Migration: `supabase/migrations/20261104100000_inbox_media.sql`.
+
 ## Setup
 
 1. Set `NEXT_PUBLIC_SITE_URL` (public `https://` address) and `ZERNIO_WEBHOOK_SECRET` (a long random string) on the server.
 2. Click **Connect webhook** in the inbox toolbar. It registers `${NEXT_PUBLIC_SITE_URL}/api/webhooks/zernio` with Zernio for the inbox events, scoped to the configured profile.
-3. `OPENAI_API_KEY` must be set for auto-replies. Without it the inbox still works, without AI.
+3. An OpenAI key must be configured for auto-replies (Settings → Configuration → OpenAI API Keys, or the `OPENAI_API_KEY` env fallback). Without one the inbox still works, without AI.
 4. Local development needs a tunnel (e.g. a public https URL forwarding to `localhost:3000`) for Zernio to reach the webhook.
 
 ## Known limits
 
 - **Username-only WhatsApp users (BSUID, April 2026+)** don't share a number. Their conversation is stored, but there's no lead, memory, AI reply or template send (templates need a number). Staff reply manually inside the window.
-- **Attachments:** only type/mime are stored. WhatsApp media URLs require the Zernio API key and expire, so media isn't downloaded or previewed yet.
+- **Attachments:** see below. Voice notes play inline but staff can't record/send them; stickers and unsupported formats are shown but not sendable; outbound files sent outside this app (Zernio dashboard, WhatsApp Business app) are saved only if Zernio includes a media URL.
 - **History:** only messages that arrive after the webhook is connected appear. Earlier Zernio history isn't imported.
 - **Concurrency:** two messages from the same contact a few seconds apart get one reply (debounce). Two app instances could each run the agent for different messages in the same burst; only the newest inbound would send.

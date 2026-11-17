@@ -8,7 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/types/supabase";
 import { VISIT_DETAIL_VIEWS, VISIT_STATUSES, programLabel, type VisitDetailView } from "@/lib/visits/constants";
 import { blankToNull, guestSchema, guestStatusSchema, visitSchema, type VisitInput } from "@/lib/visits/schemas";
-import type { LeadSearchResult, VisitGuestItem, VisitListItem } from "@/lib/visits/types";
+import { MAX_IMPORT_ROWS, validateGuestRows, type ParsedGuestRow, type RowProblem } from "@/lib/visits/guest-import";
+import type { LeadMatch, VisitGuestItem, VisitListItem } from "@/lib/visits/types";
 
 export type VisitActionResult = { error?: string };
 
@@ -40,8 +41,7 @@ function visitRow(data: ReturnType<typeof visitSchema.parse>) {
     program_category: data.programCategory,
     visitor_category: data.visitorCategory,
     booking_channel: data.bookingChannel,
-    amount_charged: data.amountCharged,
-    invoice_id: blankToNull(data.invoiceId),
+    // amount_charged (Rural Experience revenue) is maintained from the visit's proforma invoices.
     amount_to_artisans: data.amountToArtisans,
     notes: blankToNull(data.notes),
     feedback_form_id: data.feedbackFormId,
@@ -228,6 +228,7 @@ export async function createVisit(input: VisitInput): Promise<VisitActionResult 
       experienceIds: (linkedExperiences ?? []).map((r) => r.experience_id),
       guestCount: 0,
       sales: savedSales ?? [],
+      invoices: [],
       primaryGuest: null,
     },
   };
@@ -338,25 +339,61 @@ export async function getVisitGuests(visitId: string): Promise<VisitGuestItem[]>
   });
 }
 
-/** Leads matching a name or phone fragment that aren't already on the visit. */
-export async function searchLeadsForVisit(visitId: string, query: string): Promise<LeadSearchResult[]> {
+/**
+ * Existing leads whose phone matches what is being typed (country code + number).
+ * Leads are keyed on the last 10 digits, so a complete number is an exact match on that key
+ * (exactly what saving the guest would reuse), and a partial number is a prefix match on the
+ * national digits. Leads saved under a different country code are still returned — saving would
+ * merge into them anyway — but flagged so the person sees it.
+ */
+export async function findLeadsByPhone(visitId: string, code: string, number: string): Promise<LeadMatch[]> {
   await requireActiveTeamMember();
-  // Characters that are special in a PostgREST filter value.
-  const q = query.replace(/[,()%*\\"]/g, " ").trim();
-  if (q.length < 2) return [];
+  const codeDigits = code.replace(/\D/g, "");
+  let national = number.replace(/\D/g, "").replace(/^0+/, "");
+  if (national.length > 10 && codeDigits && national.startsWith(codeDigits)) national = national.slice(codeDigits.length);
+  if (national.length < 3) return [];
+
+  const exactKey = `${codeDigits}${national}`.slice(-10);
+  const filters = [`phone_normalized.like.${national}*`];
+  if (`${codeDigits}${national}`.length >= 10) filters.push(`phone_normalized.eq.${exactKey}`);
 
   const supabase = await createClient();
-  const { data: onVisit } = await supabase.from("visit_guests").select("lead_id").eq("visit_id", visitId);
-  const exclude = new Set((onVisit ?? []).map((r) => r.lead_id));
-
-  const { data } = await supabase
+  const { data: leads } = await supabase
     .from("leads")
-    .select("id, name, phone")
-    .or(`name.ilike.%${q}%,phone.ilike.%${q}%`)
+    .select("id, name, phone, attributes, whatsapp_opt_out")
+    .or(filters.join(","))
     .order("updated_at", { ascending: false })
     .limit(20);
+  if (!leads || leads.length === 0) return [];
 
-  return (data ?? []).filter((lead) => !exclude.has(lead.id)).slice(0, 8);
+  const ids = leads.map((l) => l.id);
+  const { data: guestRows } = await supabase.from("visit_guests").select("lead_id, visit_id").in("lead_id", ids);
+  const visitCounts = new Map<string, number>();
+  const onVisit = new Set<string>();
+  for (const row of guestRows ?? []) {
+    visitCounts.set(row.lead_id, (visitCounts.get(row.lead_id) ?? 0) + 1);
+    if (row.visit_id === visitId) onVisit.add(row.lead_id);
+  }
+
+  const matches = leads.map((lead): LeadMatch => {
+    const attributes = (lead.attributes ?? {}) as Record<string, unknown>;
+    const digits = lead.phone.replace(/\D/g, "");
+    // A bare 10-digit number is assumed Indian, as everywhere else in the app.
+    const leadCode = digits.length > 10 ? digits.slice(0, digits.length - 10) : "91";
+    return {
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone,
+      email: typeof attributes.email === "string" ? attributes.email : null,
+      optedOut: lead.whatsapp_opt_out,
+      onVisit: onVisit.has(lead.id),
+      visitCount: visitCounts.get(lead.id) ?? 0,
+      codeMismatch: codeDigits !== "" && leadCode !== codeDigits,
+    };
+  });
+  // Same country code first, then the rest.
+  matches.sort((a, b) => Number(a.codeMismatch) - Number(b.codeMismatch));
+  return matches.slice(0, 6);
 }
 
 /**
@@ -493,6 +530,177 @@ export async function addNewGuest(
   return {};
 }
 
+export type GuestImportResult = {
+  error?: string;
+  /** Guests newly attached to the visit. */
+  added?: number;
+  /** Of those, how many were new rows in Leads (the rest were existing leads reused). */
+  newLeads?: number;
+  /** Already on this visit, so left as they were. */
+  alreadyOnVisit?: number;
+  /** Rows that failed validation or the save, with a reason each. */
+  problems?: RowProblem[];
+};
+
+const IMPORT_CHUNK = 200;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Bulk guest upload. The browser parses the CSV/XML and sends the rows; they are validated
+ * again here. Each guest becomes (or reuses) a lead keyed by phone — so they also show up
+ * in Leads — and is attached to the visit. Re-uploading the same file is safe: guests
+ * already on the visit are counted, not duplicated.
+ */
+export async function importGuests(visitId: string, rows: ParsedGuestRow[]): Promise<GuestImportResult> {
+  const { email: createdBy } = await requireActiveTeamMember();
+  if (!Array.isArray(rows) || rows.length === 0) return { error: "The file has no guests in it." };
+  if (rows.length > MAX_IMPORT_ROWS) {
+    return { error: `Upload at most ${MAX_IMPORT_ROWS} guests at a time — split the file and upload it in parts.` };
+  }
+
+  // Never trust the client's own validation.
+  const safeRows: ParsedGuestRow[] = rows.map((r, i) => ({
+    row: typeof r?.row === "number" ? r.row : i + 1,
+    name: String(r?.name ?? ""),
+    phone: String(r?.phone ?? ""),
+    email: String(r?.email ?? ""),
+  }));
+  const { valid, problems } = validateGuestRows(safeRows);
+  if (valid.length === 0) return { error: "No valid guests to import.", problems };
+
+  const supabase = await createClient();
+  const { data: visit } = await supabase.from("visits").select("id").eq("id", visitId).maybeSingle();
+  if (!visit) return { error: "That visit no longer exists." };
+
+  const keyOf = (phone: string) => phone.replace(/\D/g, "").slice(-10);
+  const failed: RowProblem[] = [...problems];
+  const fail = (row: (typeof valid)[number], reason: string) =>
+    failed.push({ row: row.row, name: row.name, phone: row.phone, reason });
+
+  // 1. Leads that already exist for these phone numbers.
+  const leadByKey = new Map<string, { id: string; name: string | null; attributes: Record<string, Json> }>();
+  for (const part of chunk(valid, IMPORT_CHUNK)) {
+    const { data, error } = await supabase
+      .from("leads")
+      .select("id, name, attributes, phone_normalized")
+      .in("phone_normalized", part.map((g) => keyOf(g.phone)));
+    if (error) return { error: "Could not look up existing contacts.", problems: failed };
+    for (const lead of data ?? []) {
+      if (lead.phone_normalized) {
+        leadByKey.set(lead.phone_normalized, {
+          id: lead.id,
+          name: lead.name,
+          attributes: (lead.attributes ?? {}) as Record<string, Json>,
+        });
+      }
+    }
+  }
+
+  // 2. Create the missing ones in Leads.
+  const missing = valid.filter((g) => !leadByKey.has(keyOf(g.phone)));
+  let newLeads = 0;
+  for (const part of chunk(missing, IMPORT_CHUNK)) {
+    const { data, error } = await supabase
+      .from("leads")
+      .insert(
+        part.map((g) => ({
+          phone: g.phone,
+          name: g.name,
+          source: "manual" as const,
+          attributes: g.email ? { email: g.email } : {},
+        })),
+      )
+      .select("id, name, attributes, phone_normalized");
+    if (!error) {
+      for (const lead of data ?? []) {
+        if (lead.phone_normalized) {
+          leadByKey.set(lead.phone_normalized, {
+            id: lead.id,
+            name: lead.name,
+            attributes: (lead.attributes ?? {}) as Record<string, Json>,
+          });
+          newLeads++;
+        }
+      }
+      continue;
+    }
+    // The batch is atomic, so one clash (e.g. a lead created a moment ago by someone else)
+    // fails it whole. Fall back to one at a time so the rest still go through.
+    for (const g of part) {
+      const found = await findOrCreateLead(supabase, { name: g.name, phone: g.phone, email: g.email });
+      if ("error" in found) {
+        fail(g, found.error);
+        continue;
+      }
+      leadByKey.set(keyOf(g.phone), { id: found.leadId, name: g.name, attributes: {} });
+      newLeads++;
+    }
+  }
+
+  // 3. Fill gaps on existing leads (a missing name or email), never overwrite.
+  for (const g of valid) {
+    const lead = leadByKey.get(keyOf(g.phone));
+    if (!lead || missing.includes(g)) continue;
+    const update: { name?: string; attributes?: Record<string, Json> } = {};
+    if (!lead.name) update.name = g.name;
+    if (g.email && !lead.attributes.email) update.attributes = { ...lead.attributes, email: g.email };
+    if (update.name || update.attributes) await supabase.from("leads").update(update).eq("id", lead.id);
+  }
+
+  // 4. Attach to the visit, skipping anyone already on it.
+  const { data: current } = await supabase.from("visit_guests").select("lead_id, is_primary").eq("visit_id", visitId);
+  const onVisit = new Set((current ?? []).map((r) => r.lead_id));
+  let needsPrimary = !(current ?? []).some((r) => r.is_primary);
+
+  let alreadyOnVisit = 0;
+  const toAttach: {
+    insert: { visit_id: string; lead_id: string; created_by: string; is_primary: boolean };
+    source: (typeof valid)[number];
+  }[] = [];
+  for (const g of valid) {
+    const lead = leadByKey.get(keyOf(g.phone));
+    if (!lead) {
+      if (!failed.some((p) => p.row === g.row)) fail(g, "Could not create the contact.");
+      continue;
+    }
+    if (onVisit.has(lead.id)) {
+      alreadyOnVisit++;
+      continue;
+    }
+    onVisit.add(lead.id);
+    toAttach.push({
+      insert: { visit_id: visitId, lead_id: lead.id, created_by: createdBy, is_primary: needsPrimary },
+      source: g,
+    });
+    needsPrimary = false;
+  }
+
+  let added = 0;
+  for (const part of chunk(toAttach, IMPORT_CHUNK)) {
+    const { error } = await supabase.from("visit_guests").insert(part.map((item) => item.insert));
+    if (!error) {
+      added += part.length;
+      continue;
+    }
+    for (const item of part) {
+      const { error: rowError } = await supabase.from("visit_guests").insert(item.insert);
+      if (!rowError) added++;
+      else if (rowError.code === "23505") alreadyOnVisit++;
+      else fail(item.source, "Could not add the guest.");
+    }
+  }
+
+  revalidateVisits();
+  revalidatePath("/leads");
+  failed.sort((a, b) => a.row - b.row);
+  return { added, newLeads, alreadyOnVisit, problems: failed };
+}
+
 export async function setGuestStatus(guestId: string, status: string): Promise<VisitActionResult> {
   await requireActiveTeamMember();
   const parsed = guestStatusSchema.safeParse(status);
@@ -510,12 +718,13 @@ export async function setPrimaryGuest(visitId: string, guestId: string): Promise
   await requireActiveTeamMember();
   const supabase = await createClient();
   // Clear the current one first: a partial unique index allows one primary guest per visit.
-  const { error: clearError } = await supabase
+  const { data: cleared, error: clearError } = await supabase
     .from("visit_guests")
     .update({ is_primary: false })
     .eq("visit_id", visitId)
     .eq("is_primary", true)
-    .neq("id", guestId);
+    .neq("id", guestId)
+    .select("id");
   if (clearError) return { error: "Could not change the primary POC." };
   const { data, error } = await supabase
     .from("visit_guests")
@@ -523,7 +732,14 @@ export async function setPrimaryGuest(visitId: string, guestId: string): Promise
     .eq("id", guestId)
     .eq("visit_id", visitId)
     .select("id");
-  if (error || !data?.length) return { error: "Could not change the primary POC." };
+  if (error || !data?.length) {
+    // Don't leave the visit without a primary POC if the swap failed half-way.
+    const previousIds = (cleared ?? []).map((r) => r.id);
+    if (previousIds.length > 0) {
+      await supabase.from("visit_guests").update({ is_primary: true }).in("id", previousIds);
+    }
+    return { error: "Could not change the primary POC." };
+  }
   revalidateVisits();
   return {};
 }

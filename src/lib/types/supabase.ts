@@ -454,6 +454,105 @@ export type Database = {
         }
         Relationships: []
       }
+      invoice_settings: {
+        Row: {
+          bank_account_name: string | null
+          bank_account_number: string | null
+          bank_address: string | null
+          bank_ifsc: string | null
+          bank_name: string | null
+          default_payment_terms: string | null
+          footer_note: string | null
+          id: boolean
+          number_prefix: string
+          seller_address: string
+          seller_gstin: string | null
+          seller_name: string
+          seller_phone: string | null
+          seller_state_code: string | null
+          seller_state_name: string | null
+          updated_at: string
+          updated_by: string | null
+          upi_qr_path: string | null
+        }
+        Insert: {
+          bank_account_name?: string | null
+          bank_account_number?: string | null
+          bank_address?: string | null
+          bank_ifsc?: string | null
+          bank_name?: string | null
+          default_payment_terms?: string | null
+          footer_note?: string | null
+          id?: boolean
+          number_prefix?: string
+          seller_address?: string
+          seller_gstin?: string | null
+          seller_name?: string
+          seller_phone?: string | null
+          seller_state_code?: string | null
+          seller_state_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          upi_qr_path?: string | null
+        }
+        Update: {
+          bank_account_name?: string | null
+          bank_account_number?: string | null
+          bank_address?: string | null
+          bank_ifsc?: string | null
+          bank_name?: string | null
+          default_payment_terms?: string | null
+          footer_note?: string | null
+          id?: boolean
+          number_prefix?: string
+          seller_address?: string
+          seller_gstin?: string | null
+          seller_name?: string
+          seller_phone?: string | null
+          seller_state_code?: string | null
+          seller_state_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          upi_qr_path?: string | null
+        }
+        Relationships: []
+      }
+      invoice_terms: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          is_default: boolean
+          position: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          position?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          position?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       knowledge_base_articles: {
         Row: {
           category: string
@@ -749,6 +848,36 @@ export type Database = {
         }
         Relationships: []
       }
+      openai_api_keys: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          key_hint: string
+          label: string
+          vault_secret_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          key_hint: string
+          label: string
+          vault_secret_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          key_hint?: string
+          label?: string
+          vault_secret_id?: string
+        }
+        Relationships: []
+      }
       partners: {
         Row: {
           created_at: string
@@ -784,6 +913,152 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      proforma_invoice_items: {
+        Row: {
+          created_at: string
+          description: string
+          details: string | null
+          discount_label: string | null
+          discount_rate: number
+          gst_rate: number
+          id: string
+          invoice_id: string
+          position: number
+          quantity: number
+          rate: number
+          sac_code: string | null
+          service_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          details?: string | null
+          discount_label?: string | null
+          discount_rate?: number
+          gst_rate: number
+          id?: string
+          invoice_id: string
+          position: number
+          quantity: number
+          rate: number
+          sac_code?: string | null
+          service_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          details?: string | null
+          discount_label?: string | null
+          discount_rate?: number
+          gst_rate?: number
+          id?: string
+          invoice_id?: string
+          position?: number
+          quantity?: number
+          rate?: number
+          sac_code?: string | null
+          service_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proforma_invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "proforma_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proforma_invoice_items_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proforma_invoices: {
+        Row: {
+          billing_address: string | null
+          billing_gstin: string | null
+          billing_name: string
+          created_at: string
+          created_by: string | null
+          discount_total: number
+          free_guides: number
+          grand_total: number
+          gst_total: number
+          guests: number
+          guides: number
+          id: string
+          notes: string | null
+          payment_terms: string | null
+          pi_date: string
+          pi_number: string
+          status: string
+          subtotal: number
+          taxable_total: number
+          terms: Json
+          updated_at: string
+          visit_id: string | null
+        }
+        Insert: {
+          billing_address?: string | null
+          billing_gstin?: string | null
+          billing_name: string
+          created_at?: string
+          created_by?: string | null
+          discount_total?: number
+          free_guides?: number
+          grand_total?: number
+          gst_total?: number
+          guests?: number
+          guides?: number
+          id?: string
+          notes?: string | null
+          payment_terms?: string | null
+          pi_date?: string
+          pi_number: string
+          status?: string
+          subtotal?: number
+          taxable_total?: number
+          terms?: Json
+          updated_at?: string
+          visit_id?: string | null
+        }
+        Update: {
+          billing_address?: string | null
+          billing_gstin?: string | null
+          billing_name?: string
+          created_at?: string
+          created_by?: string | null
+          discount_total?: number
+          free_guides?: number
+          grand_total?: number
+          gst_total?: number
+          guests?: number
+          guides?: number
+          id?: string
+          notes?: string | null
+          payment_terms?: string | null
+          pi_date?: string
+          pi_number?: string
+          status?: string
+          subtotal?: number
+          taxable_total?: number
+          terms?: Json
+          updated_at?: string
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proforma_invoices_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reviews: {
         Row: {
@@ -911,6 +1186,134 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      service_slabs: {
+        Row: {
+          created_at: string
+          discount_type: string
+          discount_value: number
+          free_guides: number
+          id: string
+          max_headcount: number
+          min_headcount: number
+          service_id: string
+        }
+        Insert: {
+          created_at?: string
+          discount_type?: string
+          discount_value?: number
+          free_guides?: number
+          id?: string
+          max_headcount: number
+          min_headcount: number
+          service_id: string
+        }
+        Update: {
+          created_at?: string
+          discount_type?: string
+          discount_value?: number
+          free_guides?: number
+          id?: string
+          max_headcount?: number
+          min_headcount?: number
+          service_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_slabs_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_villages: {
+        Row: {
+          created_at: string
+          service_id: string
+          village_id: string
+        }
+        Insert: {
+          created_at?: string
+          service_id: string
+          village_id: string
+        }
+        Update: {
+          created_at?: string
+          service_id?: string
+          village_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_villages_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_villages_village_id_fkey"
+            columns: ["village_id"]
+            isOneToOne: false
+            referencedRelation: "villages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      services: {
+        Row: {
+          base_rate: number
+          created_at: string
+          created_by: string | null
+          custom_pricing_above: number
+          description: string | null
+          extra_guide_rate: number | null
+          gst_rate: number
+          id: string
+          is_active: boolean
+          name: string
+          pricing_unit: string
+          program_categories: string[]
+          sac_code: string | null
+          updated_at: string
+          visitor_categories: string[]
+        }
+        Insert: {
+          base_rate: number
+          created_at?: string
+          created_by?: string | null
+          custom_pricing_above?: number
+          description?: string | null
+          extra_guide_rate?: number | null
+          gst_rate?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          pricing_unit?: string
+          program_categories?: string[]
+          sac_code?: string | null
+          updated_at?: string
+          visitor_categories?: string[]
+        }
+        Update: {
+          base_rate?: number
+          created_at?: string
+          created_by?: string | null
+          custom_pricing_above?: number
+          description?: string | null
+          extra_guide_rate?: number | null
+          gst_rate?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          pricing_unit?: string
+          program_categories?: string[]
+          sac_code?: string | null
+          updated_at?: string
+          visitor_categories?: string[]
+        }
+        Relationships: []
       }
       team_members: {
         Row: {
@@ -1258,7 +1661,6 @@ export type Database = {
           feedback_form_id: string | null
           headcount: number | null
           id: string
-          invoice_id: string | null
           notes: string | null
           origin_place: string | null
           partner_id: string | null
@@ -1291,7 +1693,6 @@ export type Database = {
           feedback_form_id?: string | null
           headcount?: number | null
           id?: string
-          invoice_id?: string | null
           notes?: string | null
           origin_place?: string | null
           partner_id?: string | null
@@ -1324,7 +1725,6 @@ export type Database = {
           feedback_form_id?: string | null
           headcount?: number | null
           id?: string
-          invoice_id?: string | null
           notes?: string | null
           origin_place?: string | null
           partner_id?: string | null
@@ -1557,6 +1957,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_openai_api_key: {
+        Args: { p_created_by: string; p_key: string; p_label: string; p_make_active: boolean }
+        Returns: string
+      }
       agent_submissions_for_phone: {
         Args: { p_limit?: number; p_phone: string }
         Returns: {
@@ -1652,8 +2056,11 @@ export type Database = {
         }
         Returns: Json
       }
+      delete_openai_api_key: { Args: { p_id: string }; Returns: undefined }
       feedback_save: { Args: { p_answers: Json; p_complete?: boolean; p_token: string }; Returns: Json }
       feedback_session: { Args: { p_token: string }; Returns: Json }
+      get_active_openai_api_key: { Args: never; Returns: string }
+      get_openai_api_key: { Args: { p_id: string }; Returns: string }
       hook_restrict_signup_to_active_team_members: {
         Args: { event: Json }
         Returns: Json
@@ -1669,6 +2076,23 @@ export type Database = {
         Returns: Json
       }
       normalize_phone: { Args: { p_phone: string }; Returns: string }
+      proforma_invoice_recalc: {
+        Args: { p_invoice_id: string }
+        Returns: undefined
+      }
+      save_proforma_invoice: {
+        Args: { p_id: string | null; p_invoice: Json; p_items: Json }
+        Returns: string
+      }
+      save_service: {
+        Args: {
+          p_id: string | null
+          p_service: Json
+          p_slabs: Json
+          p_village_ids: string[]
+        }
+        Returns: string
+      }
       search_knowledge_base: {
         Args: { p_limit?: number; p_query: string }
         Returns: {
@@ -1680,7 +2104,12 @@ export type Database = {
           title: string
         }[]
       }
+      set_active_openai_api_key: { Args: { p_id: string }; Returns: undefined }
       sync_form_leads: { Args: { p_form_id: string }; Returns: number }
+      sync_visit_charges: {
+        Args: { p_visit_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       form_field_type:

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Check, Plus, TrashBin } from "@gravity-ui/icons";
 import {
   AlertDialog,
@@ -36,6 +37,7 @@ import {
   VISIT_STATUSES,
   VISITOR_CATEGORIES,
 } from "@/lib/visits/constants";
+import { invoiceStatusLabel } from "@/lib/invoices/constants";
 import { formatInr } from "@/lib/visits/dashboard";
 import { visitSchema, type VisitInput } from "@/lib/visits/schemas";
 import { timeInputValue } from "@/lib/visits/time";
@@ -69,7 +71,7 @@ const STEPS: { title: string; fields: (keyof VisitInput)[] }[] = [
     ],
   },
   { title: "Locations", fields: ["villageIds", "experienceIds"] },
-  { title: "Payment", fields: ["source", "amountCharged", "invoiceId", "amountToArtisans", "sales"] },
+  { title: "Payment", fields: ["source", "amountToArtisans", "sales"] },
   { title: "Internal", fields: ["feedbackFormId", "notes"] },
 ];
 
@@ -312,6 +314,56 @@ function LocationPicker({
   );
 }
 
+/**
+ * The visit's charges: managed as proforma invoices, not typed here. Issued and paid PIs
+ * make up its Rural Experience revenue (taxable value, before GST).
+ */
+function VisitInvoicesSummary({ visit }: { visit: VisitListItem | null }) {
+  const invoices = visit?.invoices ?? [];
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border p-3 sm:col-span-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium">Charges (proforma invoices)</p>
+          <p className="text-xs text-muted">
+            Priced from Services. Issued and paid PIs count as this visit&apos;s Rural Experience revenue
+            {visit?.amount_charged !== null && visit?.amount_charged !== undefined
+              ? `: ${formatInr(visit.amount_charged)} before GST.`
+              : "."}
+          </p>
+        </div>
+        {visit ? (
+          <Link
+            className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-sm font-medium hover:bg-neutral-50"
+            href={`/invoices/new?visit=${visit.id}`}
+          >
+            <Plus className="size-4" />
+            New proforma invoice
+          </Link>
+        ) : null}
+      </div>
+      {invoices.length > 0 ? (
+        <ul className="flex flex-col divide-y divide-border/60 rounded-lg border border-border/70 text-sm">
+          {invoices.map((invoice) => (
+            <li key={invoice.id} className="flex items-center justify-between gap-3 px-3 py-2">
+              <Link className="min-w-0 break-words font-medium text-accent hover:underline" href={`/invoices/${invoice.id}`}>
+                {invoice.pi_number}
+              </Link>
+              <span className="shrink-0 text-muted">
+                {invoiceStatusLabel(invoice.status)} · {formatInr(invoice.grand_total)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted">
+          {visit ? "No proforma invoice yet." : "Save the visit first, then raise its proforma invoice."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 type SaleDraft = { key: string; invoiceId: string; amount: string };
 
 /** The invoices for one sales channel (JR sales or JR Farms) attributed to the visit. */
@@ -406,8 +458,6 @@ function VisitForm({
   const [villageIds, setVillageIds] = useState<string[]>(visit?.villageIds ?? []);
   const [experienceIds, setExperienceIds] = useState<string[]>(visit?.experienceIds ?? []);
   const [source, setSource] = useState(visit?.source ?? "");
-  const [amountCharged, setAmountCharged] = useState(numberToText(visit?.amount_charged ?? null));
-  const [invoiceId, setInvoiceId] = useState(visit?.invoice_id ?? "");
   const [sales, setSales] = useState<Record<string, SaleDraft[]>>(() =>
     Object.fromEntries(
       SALE_CHANNELS.map((channel) => [
@@ -487,8 +537,6 @@ function VisitForm({
       originPlace,
       visitorCategory: visitorCategory as VisitInput["visitorCategory"],
       bookingChannel,
-      amountCharged,
-      invoiceId,
       amountToArtisans,
       notes,
       feedbackFormId,
@@ -787,14 +835,7 @@ function VisitForm({
               <Label>Institute / agency / company</Label>
               <Input placeholder="e.g. MNIT Jaipur" />
             </TextField>
-            <TextField value={amountCharged} onChange={setAmountCharged}>
-              <Label>Rural Experience revenue (₹)</Label>
-              <Input min={0} placeholder="e.g. 15000" step="0.01" type="number" />
-            </TextField>
-            <TextField value={invoiceId} onChange={setInvoiceId}>
-              <Label>Rural Experience invoice ID</Label>
-              <Input placeholder="e.g. INV-2026-0142" />
-            </TextField>
+            <VisitInvoicesSummary visit={visit} />
             <TextField value={amountToArtisans} onChange={setAmountToArtisans}>
               <Label>Amount to artisan families (₹)</Label>
               <Input min={0} placeholder="e.g. 9000" step="0.01" type="number" />

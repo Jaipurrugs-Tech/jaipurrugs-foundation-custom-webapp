@@ -197,7 +197,7 @@ export function DashboardView({
               <StatCard
                 label="Rural Experience"
                 value={formatInr(revenue.streams.rural_experience.amount)}
-                hint={`${revenue.streams.rural_experience.invoices} invoice${revenue.streams.rural_experience.invoices === 1 ? "" : "s"} · ${revenue.streams.rural_experience.visits} visit${revenue.streams.rural_experience.visits === 1 ? "" : "s"}`}
+                hint={`Before GST · ${revenue.streams.rural_experience.invoices} proforma invoice${revenue.streams.rural_experience.invoices === 1 ? "" : "s"} · ${revenue.streams.rural_experience.visits} visit${revenue.streams.rural_experience.visits === 1 ? "" : "s"}`}
               />
               <StatCard
                 label="JR sales"

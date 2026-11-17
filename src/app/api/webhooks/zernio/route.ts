@@ -1,6 +1,6 @@
 import { after } from "next/server";
 import { replyWithAgent } from "@/lib/inbox/agent-reply";
-import { ingestZernioEvent, verifyZernioSignature } from "@/lib/inbox/ingest";
+import { ingestZernioEvent, saveInboundMedia, verifyZernioSignature } from "@/lib/inbox/ingest";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // Zernio inbox webhook (message.received / sent / delivered / read / failed).
@@ -32,6 +32,13 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
   try {
     const result = await ingestZernioEvent(admin, payload);
+    if (result?.media) {
+      const job = result.media;
+      // Saved after the 200: the Zernio URL needs our key and expires, and Meta drops the file in ~7 days.
+      after(() =>
+        saveInboundMedia(admin, job).catch((err) => console.error("[zernio webhook] saving media failed", err)),
+      );
+    }
     if (result?.replyTo) {
       const trigger = result.replyTo;
       after(() => replyWithAgent(admin, trigger));

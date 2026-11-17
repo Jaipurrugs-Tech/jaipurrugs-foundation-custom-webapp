@@ -53,7 +53,7 @@ A Zernio inbound-message webhook (`app/api/webhooks/zernio/route.ts`) would have
 
 ## Environment
 
-- `OPENAI_API_KEY` — required for agent turns (server-only).
+- OpenAI API key — required for agent turns (server-only). Managed in **Settings → Configuration → OpenAI API Keys**: keys are stored encrypted in Supabase Vault (`openai_api_keys` metadata table + service-role-only `*_openai_api_key` functions), one key active at a time, resolved per call by `src/lib/openai/keys.ts` (`resolveOpenAIKey`). The `OPENAI_API_KEY` env var is only a fallback for when no saved key is active. The key is never sent to the browser; the UI sees only the label and last four characters.
 - `AGENT_MODEL` — optional, any Mastra `provider/model` string.
 - `ZERNIO_API_KEY` / `ZERNIO_PROFILE_ID` — already used by Settings. Templates use the first active connected WhatsApp account.
 

@@ -14,7 +14,7 @@ export async function syncReviewsFromSource(source: string): Promise<SyncReviews
   await requireActiveTeamMember();
   if (!isReviewSource(source)) return { error: "Unknown review source." };
   if (!isFirecrawlConfigured()) return { error: "Firecrawl isn't configured. Set FIRECRAWL_API_KEY on the server." };
-  if (!isAgentConfigured()) return { error: "The AI agent isn't configured. Set OPENAI_API_KEY on the server." };
+  if (!(await isAgentConfigured())) return { error: "The AI agent isn't configured. Add an OpenAI API key in Settings → Configuration." };
 
   // The user's own client, not service-role: RLS (active team members only) stays the boundary.
   const supabase = await createClient();

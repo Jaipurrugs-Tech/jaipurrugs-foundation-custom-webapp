@@ -1,8 +1,10 @@
 "use client";
 
 import { Children, type ReactNode } from "react";
+import Link from "next/link";
 import { ArrowsExpand, ChevronDown, Envelope, LayoutSideContentRight, Pencil, Persons } from "@gravity-ui/icons";
 import { Button, Chip, Drawer, Dropdown, Label, Modal } from "@heroui/react";
+import { invoiceStatusLabel } from "@/lib/invoices/constants";
 import { formatPhone } from "@/lib/mastra/phone";
 import {
   SALE_CHANNELS,
@@ -157,15 +159,44 @@ function VisitDetails({
         rows={[
           {
             label: "Rural Experience revenue",
-            value: visit.amount_charged !== null ? rupees.format(visit.amount_charged) : null,
+            value:
+              visit.amount_charged !== null ? (
+                <>
+                  {rupees.format(visit.amount_charged)}
+                  <span className="text-muted"> before GST</span>
+                </>
+              ) : null,
           },
-          { label: "Invoice ID", value: visit.invoice_id },
           {
             label: "To artisan families",
             value: visit.amount_to_artisans !== null ? rupees.format(visit.amount_to_artisans) : null,
           },
         ]}
       >
+        <div className="flex flex-col gap-1 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted">Proforma invoices</span>
+            <Link className="text-sm font-medium text-accent hover:underline" href={`/invoices/new?visit=${visit.id}`}>
+              + New PI
+            </Link>
+          </div>
+          {visit.invoices.length > 0 ? (
+            <ul className="flex flex-col divide-y divide-border/60 rounded-xl border border-border/70">
+              {visit.invoices.map((invoice) => (
+                <li key={invoice.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <Link className="min-w-0 break-words font-medium text-accent hover:underline" href={`/invoices/${invoice.id}`}>
+                    {invoice.pi_number}
+                  </Link>
+                  <span className="shrink-0 text-muted">
+                    {invoiceStatusLabel(invoice.status)} · {rupees.format(invoice.grand_total)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted">None yet. Charges for this visit are raised as proforma invoices.</p>
+          )}
+        </div>
         {SALE_CHANNELS.map((channel) => {
           const sales = visit.sales.filter((sale) => sale.channel === channel.id);
           if (sales.length === 0) return null;

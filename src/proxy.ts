@@ -26,5 +26,7 @@ export const config = {
     "/partners/:path*",
     "/facilitators/:path*",
     "/messaging/:path*",
+    "/services/:path*",
+    "/invoices/:path*",
   ],
 };

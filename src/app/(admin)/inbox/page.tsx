@@ -28,7 +28,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
 
   return (
     <InboxView
-      agentConfigured={isAgentConfigured()}
+      agentConfigured={await isAgentConfigured()}
       autoReplyEnabled={settings?.auto_reply_enabled ?? true}
       conversations={conversations ?? []}
       thread={thread}

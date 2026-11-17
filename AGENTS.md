@@ -38,7 +38,7 @@ The app has exactly two surfaces:
 src/
   app/
     (public)/f/[shareToken]/page.tsx       # anonymous form fill, no auth
-    (admin)/{dashboard,inbox,forms,team,settings,agents,leads,templates,calendar,trips,villages,partners,facilitators,messaging}/...  # gated by proxy.ts + RLS, shares one nav-shell layout
+    (admin)/{dashboard,inbox,forms,team,settings,agents,leads,templates,calendar,trips,villages,partners,facilitators,messaging,services,invoices}/...  # gated by proxy.ts + RLS, shares one nav-shell layout
     api/webhooks/zernio/route.ts           # Zernio inbox webhook (HMAC-verified, service-role; see phase 10)
     api/cron/dispatch/route.ts             # visit-message dispatcher, called by pg_cron/pg_net (Bearer CRON_SECRET, service-role; see phase 11)
     (public)/fb/[token]/page.tsx           # a guest's personal feedback link (token-scoped RPCs only; see phase 11)
@@ -49,9 +49,10 @@ src/
     supabase/{server,client,admin,proxy}.ts  # 4 factories; admin.ts is server-only, service-role;
                                               # proxy.ts holds the updateSession() helper proxy.ts calls
     auth/session.ts                          # getCurrentUser() / requireActiveTeamMember() server helpers
-    actions/{forms,submissions,team,auth,zernio,agent,kb,leads,templates,inbox,villages,partners,facilitators,visits,messaging,feedback,reviews}.ts # server actions, grouped by domain
+    actions/{forms,submissions,team,auth,zernio,openai-keys,agent,kb,leads,templates,inbox,villages,partners,facilitators,visits,messaging,feedback,reviews,services,invoices}.ts # server actions, grouped by domain
     inbox/{ingest,agent-reply}.ts            # webhook ingestion + automatic agent replies (server-only)
     forms/field-types.ts                     # single source of truth: field-type registry
+    openai/                                  # OpenAI key resolution: Vault-stored key (Settings), env fallback; server-only
     mastra/                                  # AI agent + context-bound tools (phone-scoped; see phase 8)
     leads/fields.ts                          # lead field refs (name | phone | attr:<key>) shared by UI + agent
     whatsapp/                                # template summaries, builder rules, variable bindings (phase 9)
@@ -59,6 +60,7 @@ src/
     reviews/                                 # Airbnb review sync: Firecrawl fetch, organizer agent, dedupe, store (server-only; phase 11)
     visits/                                  # visit-operations schemas, constants, IST time helpers, queries (phase 11)
     scheduler/                               # scheduled WhatsApp sends: dispatcher + inbox mirror (server-only, service-role; phase 11)
+    invoices/                                # services + proforma invoices: pricing maths (mirrors the SQL), schemas, queries, PDF (phase 12)
   proxy.ts                                   # (admin)-only session + whitelist gate (Next.js 16: renamed from middleware.ts)
 supabase/
   migrations/                                # one .sql file per schema change, incl. RLS
@@ -86,7 +88,7 @@ docs/phases/                                 # phase-by-phase scope, do's, don't
 - **Do** enforce `team_members.status = 'active'` via RLS (`public.is_active_team_member()`) on every admin-owned table, not just in `proxy.ts` — `proxy.ts` is a UX guard, RLS is the real boundary.
 - **Do** write one migration per schema change under `supabase/migrations/`, applied via the Supabase MCP connection, and commit the corresponding SQL for version history regardless of how it was applied.
 - **Do** keep all field-type rendering/validation/config logic in the single shared registry (`lib/forms/field-types.ts`), imported by the editor, the public renderer, and the metrics dashboard.
-- **Do** use short-lived signed URLs for any admin access to files in the private `form-uploads` / `admin-assets` buckets — never make those buckets public. (`form-assets`, holding logos/cover/section images, is the intentional exception — see §7.)
+- **Do** use short-lived signed URLs for any admin access to files in the private `form-uploads` / `admin-assets` / `invoice-assets` buckets — never make those buckets public. (`form-assets`, holding logos/cover/section images, is the intentional exception — see §7.)
 - **Do** treat every field's `position` as a fractional index — reordering updates exactly one row, never a full renumbering pass.
 - **Do** save historical answers with a `field_snapshot` so metrics and exports stay correct even after a field's label/type is edited later.
 - **Do** scope every AI-agent tool to the conversation's phone via the `AgentToolContext` closure and `public.agent_submissions_for_phone()` — never give a tool a phone/identity argument (see phase 8).
@@ -112,7 +114,7 @@ docs/phases/                                 # phase-by-phase scope, do's, don't
 - **Auth method: Supabase Auth email + password only.** No magic link, no OAuth provider, and **no separate sign-up UI** — `/auth/login` has one form (email + password, one button). The `signIn` server action tries `signInWithPassword` first; if that fails, it tries `signUp` with the same credentials, which only succeeds when no account exists yet (Supabase's `signUp` on an already-registered email fails distinctly) — so a whitelisted email's first-ever visit creates its account with whatever password it enters, and every visit after that just signs in. This depends on the project having **email confirmation disabled** (see the manual Dashboard step below) — with it enabled, a first-time visit would get stuck on "check your email" instead of signing straight in.
 - Whitelist enforcement is layered, and all layers must exist before auth is considered done:
   1. A Postgres "before user created" Auth Hook (`public.hook_restrict_signup_to_active_team_members`) rejects account creation (`supabase.auth.signUp`) outright with HTTP 403 unless `team_members.status = 'active'` for that email. An unauthorized email never gets an `auth.users` row. **This hook must be manually enabled once** in the Supabase Dashboard (Authentication → Hooks → Before User Created → select the function) — there is no CLI/MCP call that does this.
-  2. `proxy.ts` re-validates the session via `supabase.auth.getClaims()` (never `getSession()` — it doesn't guarantee JWT revalidation) on every request under the real admin paths (`/dashboard`, `/inbox`, `/forms`, `/team`, `/settings`, `/agents`, `/leads`, `/templates`, `/calendar`, `/trips`, `/villages`, `/partners`, `/facilitators`, `/messaging` — the list lives in both `src/proxy.ts` (matcher) and `src/lib/supabase/proxy.ts` (`ADMIN_PATH_PREFIXES`); a new admin path must be added to both — **not** the `(admin)` route-group syntax, which doesn't appear in the actual URL and would never match). It then queries `team_members` for that email; RLS means this query naturally returns zero rows for anyone not an active member, so "no row back" is sufficient to redirect to `/auth/blocked` and sign the user out. This is what catches a user deactivated after their session was already issued (the hook only fires once, at account creation).
+  2. `proxy.ts` re-validates the session via `supabase.auth.getClaims()` (never `getSession()` — it doesn't guarantee JWT revalidation) on every request under the real admin paths (`/dashboard`, `/inbox`, `/forms`, `/team`, `/settings`, `/agents`, `/leads`, `/templates`, `/calendar`, `/trips`, `/villages`, `/partners`, `/facilitators`, `/messaging`, `/services`, `/invoices` — the list lives in both `src/proxy.ts` (matcher) and `src/lib/supabase/proxy.ts` (`ADMIN_PATH_PREFIXES`); a new admin path must be added to both — **not** the `(admin)` route-group syntax, which doesn't appear in the actual URL and would never match). It then queries `team_members` for that email; RLS means this query naturally returns zero rows for anyone not an active member, so "no row back" is sufficient to redirect to `/auth/blocked` and sign the user out. This is what catches a user deactivated after their session was already issued (the hook only fires once, at account creation).
   3. RLS on every admin-owned table via `public.is_active_team_member()`, so even a valid session for a since-deactivated user is refused at the query level, independent of proxy.ts.
 - `team_members` has **no roles**. Any row with `status = 'active'` can read and write the entire `team_members` table (add, reactivate, deactivate, or permanently delete any row, including in principle its own) — see the single-tier decision in §1.
 - **"Remove" is a hard delete**, not a status toggle — `removeTeamMember` issues a real `DELETE`. This is a deliberate simplicity trade-off (no audit trail for removed rows) confirmed for this project; deactivating (status → `inactive`) remains available as the separate, reversible action for temporarily revoking access.
@@ -141,6 +143,7 @@ Detailed scope, do's, and don'ts for each phase live in `docs/phases/`. This tab
 | 9 | Leads + lists + custom attributes, form → lead sync, template builder & variable bindings | Admin — Leads, Templates, DB, Zernio | [docs/phases/09-leads-templates.md](docs/phases/09-leads-templates.md) |
 | 10 | WhatsApp inbox, 24h window, AI auto-replies + staff takeover, per-contact memory | Admin — Inbox, webhook, DB, Zernio | [docs/phases/10-whatsapp-inbox.md](docs/phases/10-whatsapp-inbox.md) |
 | 11 | Visit operations: calendar, trips, villages, experiences, partners, guests (leads), scheduled WhatsApp messaging, dashboard | Admin — Operations, DB, agent tools, scheduler | [docs/phases/11-visit-operations.md](docs/phases/11-visit-operations.md) |
+| 12 | Services (rates, GST, locations, programs, visitor types, headcount slabs, free guides) and proforma invoices (PI numbering, T&C, PDF with UPI QR); a visit's revenue comes from its PIs | Admin — Services, Proforma invoices, Trips, DB, Storage | [docs/phases/12-services-invoices.md](docs/phases/12-services-invoices.md) |
 
 <!-- BEGIN:nextjs-agent-rules -->
 

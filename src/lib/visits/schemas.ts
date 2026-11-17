@@ -175,9 +175,8 @@ export const visitSchema = z
     originPlace: optionalText(120),
     visitorCategory: z.enum(ids(VISITOR_CATEGORIES), "Pick the visitor category."),
     bookingChannel: optionalEnum(ids(BOOKING_CHANNELS)),
-    // Rural Experience revenue and its invoice.
-    amountCharged: optionalMoney,
-    invoiceId: optionalText(60),
+    // Rural Experience revenue isn't entered here: it comes from the visit's issued / paid
+    // proforma invoices (see supabase/migrations/20261104130000_services_proforma_invoices.sql).
     amountToArtisans: optionalMoney,
     notes: optionalText(2000),
     feedbackFormId: optionalUuid,

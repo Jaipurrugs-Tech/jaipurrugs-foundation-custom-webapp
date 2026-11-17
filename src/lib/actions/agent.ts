@@ -45,7 +45,7 @@ export async function getAgentStatusAction(): Promise<AgentStatus> {
   const account = pickWhatsAppAccount(accounts.accounts);
 
   return {
-    openaiConfigured: isAgentConfigured(),
+    openaiConfigured: await isAgentConfigured(),
     model: AGENT_MODEL,
     whatsapp: {
       configured: Boolean(account),
@@ -131,7 +131,7 @@ export async function sendAgentMessage(input: z.input<typeof sendSchema>): Promi
   await requireActiveTeamMember();
   const parsed = sendSchema.safeParse(input);
   if (!parsed.success) return { error: "Message can't be empty." };
-  if (!isAgentConfigured()) return { error: "OPENAI_API_KEY is not configured on the server." };
+  if (!(await isAgentConfigured())) return { error: "No OpenAI API key is configured. Add one in Settings → Configuration." };
 
   const { sessionId, content, liveSend } = parsed.data;
   const supabase = await createClient();

@@ -138,7 +138,7 @@ async function organizePage(source: ReviewSource, markdown: string, latestStored
     return { ok: true, organized: await organizeReviews({ source, markdown, latestStored }) };
   } catch (err) {
     console.error("[reviews] organizer agent failed", err);
-    return { ok: false, error: "The review agent failed to process the page. Check OPENAI_API_KEY and try again." };
+    return { ok: false, error: "The review agent failed to process the page. Check the OpenAI API key in Settings → Configuration and try again." };
   }
 }
 
