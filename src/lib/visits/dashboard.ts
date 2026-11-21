@@ -137,9 +137,9 @@ export type DashboardRangeId = (typeof DASHBOARD_RANGES)[number]["id"] | "custom
 
 export const DEFAULT_DASHBOARD_RANGE = "12m";
 
-/** "all" counts every program; the default keeps the impact numbers to Rural Experience. */
+/** "all" counts every program. It is the default; a single program is picked from the Program filter. */
 export const ALL_PROGRAMS = "all";
-export const DEFAULT_DASHBOARD_PROGRAM = "rural_experience";
+export const DEFAULT_DASHBOARD_PROGRAM = ALL_PROGRAMS;
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
