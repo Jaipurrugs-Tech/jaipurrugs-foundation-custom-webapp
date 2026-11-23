@@ -41,6 +41,7 @@ import type { VisitListItem, VisitReference } from "@/lib/visits/types";
 import { VisitMessagingModal, useVisitMessaging } from "../messaging/visit-messaging-modal";
 import { VisitsCalendar } from "./calendar-view";
 import { ALL, FilterSelect } from "./filter-select";
+import { TripInvoicesCell } from "./trip-invoices-cell";
 import { VisitDetailPanel } from "./visit-detail-panel";
 import { VisitFormModal } from "./visit-form-modal";
 import { VisitGuestsModal, useVisitGuests } from "./visit-guests-modal";
@@ -397,7 +398,7 @@ export function TripsView({
           <Table.ScrollContainer>
             <Table.Content
               aria-label="Visits"
-              className="w-full min-w-[980px]"
+              className="w-full min-w-[1120px]"
               onRowAction={handleRowAction}
             >
               <Table.Header>
@@ -408,6 +409,7 @@ export function TripsView({
                 <Table.Column>Group</Table.Column>
                 <Table.Column>Headcount</Table.Column>
                 <Table.Column>Villages</Table.Column>
+                <Table.Column>Invoice</Table.Column>
                 <Table.Column>Status</Table.Column>
                 <Table.Column className="w-14 text-right">
                   <span className="sr-only">Actions</span>
@@ -473,6 +475,9 @@ export function TripsView({
                           ))
                         )}
                       </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <TripInvoicesCell invoices={visit.invoices} visitId={visit.id} />
                     </Table.Cell>
                     <Table.Cell>
                       <VisitStatusChip status={visit.status} />
