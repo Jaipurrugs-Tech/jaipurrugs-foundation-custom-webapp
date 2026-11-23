@@ -4,23 +4,28 @@ import { useState } from "react";
 import { ArrowDownToLine, Eye } from "@gravity-ui/icons";
 import { Button, toast } from "@heroui/react";
 import { downloadInvoicePdf, previewInvoicePdf } from "@/lib/invoices/download";
+import { openExternalInvoicePdf } from "@/lib/invoices/open-external";
 
 /** Preview / download buttons for a saved PI. */
 export function PdfActions({
   invoiceId,
   isDisabled,
   compact = false,
+  external = false,
 }: {
   invoiceId: string;
   isDisabled?: boolean;
   compact?: boolean;
+  /** An uploaded PI: open its uploaded file instead of drawing one. */
+  external?: boolean;
 }) {
   const [busy, setBusy] = useState<"preview" | "download" | null>(null);
 
   async function run(kind: "preview" | "download") {
     setBusy(kind);
     try {
-      if (kind === "preview") await previewInvoicePdf(invoiceId);
+      if (external) await openExternalInvoicePdf(invoiceId);
+      else if (kind === "preview") await previewInvoicePdf(invoiceId);
       else await downloadInvoicePdf(invoiceId);
     } catch (error) {
       toast.danger(error instanceof Error ? error.message : "Could not create the PDF.");

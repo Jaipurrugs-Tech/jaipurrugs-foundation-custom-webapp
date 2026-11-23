@@ -44,7 +44,7 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
   const salesQuery = supabase.from("visit_sales").select("id, visit_id, channel, invoice_id, amount").order("created_at");
   const invoicesQuery = supabase
     .from("proforma_invoices")
-    .select("id, visit_id, pi_number, pi_date, status, taxable_total, grand_total")
+    .select("id, visit_id, pi_number, pi_date, status, taxable_total, grand_total, is_external")
     .not("visit_id", "is", null)
     .order("pi_date");
   const taxInvoicesQuery = supabase

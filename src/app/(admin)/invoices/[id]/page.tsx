@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ExternalInvoiceView } from "@/components/admin/invoices/external-invoice-view";
 import { InvoiceEditor } from "@/components/admin/invoices/invoice-editor";
 import { requireActiveTeamMember } from "@/lib/auth/session";
 import { loadInvoiceEditorData } from "@/lib/invoices/editor-data";
+import { visitOptionLabel } from "@/lib/invoices/queries";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +22,28 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
     supabase.from("proforma_invoice_items").select("*").eq("invoice_id", id).order("position"),
   ]);
   if (!invoice) notFound();
+
+  if (invoice.is_external) {
+    const { data: visit } = invoice.visit_id
+      ? await supabase
+          .from("visits")
+          .select("visit_date, program_category, source, headcount")
+          .eq("id", invoice.visit_id)
+          .maybeSingle()
+      : { data: null };
+    return (
+      <div className="flex flex-col gap-6">
+        <div>
+          <Link className="text-sm text-muted hover:text-foreground" href="/invoices">
+            ← Proforma invoices
+          </Link>
+          <h1 className="text-xl font-semibold">{invoice.pi_number}</h1>
+        </div>
+        <ExternalInvoiceView invoice={invoice} visitLabel={visit ? visitOptionLabel(visit) : null} />
+      </div>
+    );
+  }
+
   const data = await loadInvoiceEditorData(supabase, invoice.visit_id);
 
   return (

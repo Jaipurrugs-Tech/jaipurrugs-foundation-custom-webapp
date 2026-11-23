@@ -7,7 +7,7 @@ export type VisitSale = Pick<Tables<"visit_sales">, "id" | "channel" | "invoice_
 /** A proforma invoice linked to a visit. Issued / paid ones make up the visit's Rural Experience revenue. */
 export type VisitInvoice = Pick<
   Tables<"proforma_invoices">,
-  "id" | "pi_number" | "pi_date" | "status" | "taxable_total" | "grand_total"
+  "id" | "pi_number" | "pi_date" | "status" | "taxable_total" | "grand_total" | "is_external"
 >;
 
 /** A tax invoice recorded for a visit (Finance → Invoices): what the client has paid. */

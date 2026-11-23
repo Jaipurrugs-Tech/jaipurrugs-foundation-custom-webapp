@@ -190,3 +190,22 @@ export const invoiceTermSchema = z.object({
 });
 
 export type InvoiceTermInput = z.input<typeof invoiceTermSchema>;
+
+/** A proforma invoice made outside the platform, uploaded with its PDF. */
+export const externalInvoiceSchema = z
+  .object({
+    visitId: optionalUuid,
+    piNumber: z.string().trim().min(1, "Enter the PI number as printed.").max(80),
+    piDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Enter the PI date.")
+      .refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), "Enter the PI date."),
+    billingName: z.string().trim().min(1, "Enter who it is billed to.").max(200),
+    status: z.enum(["issued", "paid", "cancelled"], "Pick the status."),
+    grandTotal: money("Enter the total (incl. GST)."),
+    gstTotal: money("Enter the GST (0 if none)."),
+    notes: optionalText(2000),
+  })
+  .refine((d) => d.gstTotal <= d.grandTotal, { message: "GST can't be more than the total.", path: ["gstTotal"] });
+
+export type ExternalInvoiceInput = z.input<typeof externalInvoiceSchema>;

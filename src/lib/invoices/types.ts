@@ -29,6 +29,7 @@ export type InvoiceListItem = Pick<
   | "guests"
   | "taxable_total"
   | "grand_total"
+  | "is_external"
   | "updated_at"
 > & { visitLabel: string | null };
 

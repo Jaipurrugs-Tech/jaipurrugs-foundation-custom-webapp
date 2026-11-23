@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, Plus, TrashBin } from "@gravity-ui/icons";
+import { useRouter } from "next/navigation";
+import { ArrowUpFromLine, Check, Plus, TrashBin } from "@gravity-ui/icons";
 import {
   AlertDialog,
   Autocomplete,
@@ -24,6 +25,7 @@ import {
   TextArea,
   TextField,
   TimeField,
+  toast,
   useFilter,
   type Key,
 } from "@heroui/react";
@@ -38,11 +40,13 @@ import {
   VISITOR_CATEGORIES,
 } from "@/lib/visits/constants";
 import { invoiceStatusLabel } from "@/lib/invoices/constants";
+import { openExternalInvoicePdf } from "@/lib/invoices/open-external";
 import { formatInr } from "@/lib/visits/dashboard";
 import { visitSchema, type VisitInput } from "@/lib/visits/schemas";
 import { timeInputValue } from "@/lib/visits/time";
-import type { VillageOption, VisitListItem, VisitReference } from "@/lib/visits/types";
+import type { VillageOption, VisitInvoice, VisitListItem, VisitReference } from "@/lib/visits/types";
 import { formatPhone } from "@/lib/mastra/phone";
+import { ExternalInvoiceDialog } from "../invoices/external-invoice-dialog";
 import { PhoneField, joinPhone, splitPhone } from "./phone-field";
 
 const NONE = "__none";
@@ -319,36 +323,68 @@ function LocationPicker({
  * make up its Rural Experience revenue (taxable value, before GST).
  */
 function VisitInvoicesSummary({ visit }: { visit: VisitListItem | null }) {
-  const invoices = visit?.invoices ?? [];
+  const router = useRouter();
+  // Uploaded here since the form opened (the form's copy of the visit doesn't refresh while it's open).
+  const [added, setAdded] = useState<VisitInvoice[]>([]);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const invoices = [...(visit?.invoices ?? []), ...added.filter((a) => !visit?.invoices.some((i) => i.id === a.id))];
+
+  async function viewPdf(id: string) {
+    try {
+      await openExternalInvoicePdf(id);
+    } catch (error) {
+      toast.danger(error instanceof Error ? error.message : "Could not open the PDF.");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border p-3 sm:col-span-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-medium">Charges (proforma invoices)</p>
           <p className="text-xs text-muted">
-            Priced from Services. Issued and paid PIs count as this visit&apos;s Rural Experience revenue
+            Priced from Services, or uploaded if it was made outside this platform. Issued and paid PIs count as this
+            visit&apos;s revenue
             {visit?.amount_charged !== null && visit?.amount_charged !== undefined
               ? `: ${formatInr(visit.amount_charged)} before GST.`
               : "."}
           </p>
         </div>
         {visit ? (
-          <Link
-            className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-sm font-medium hover:bg-neutral-50"
-            href={`/invoices/new?visit=${visit.id}`}
-          >
-            <Plus className="size-4" />
-            New proforma invoice
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" onPress={() => setIsUploadOpen(true)}>
+              <ArrowUpFromLine className="size-4" />
+              Upload existing PI
+            </Button>
+            <Link
+              className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-sm font-medium hover:bg-neutral-50"
+              href={`/invoices/new?visit=${visit.id}`}
+            >
+              <Plus className="size-4" />
+              New proforma invoice
+            </Link>
+          </div>
         ) : null}
       </div>
       {invoices.length > 0 ? (
         <ul className="flex flex-col divide-y divide-border/60 rounded-lg border border-border/70 text-sm">
           {invoices.map((invoice) => (
             <li key={invoice.id} className="flex items-center justify-between gap-3 px-3 py-2">
-              <Link className="min-w-0 break-words font-medium text-accent hover:underline" href={`/invoices/${invoice.id}`}>
-                {invoice.pi_number}
-              </Link>
+              {invoice.is_external ? (
+                <button
+                  className="min-w-0 break-words text-left font-medium text-accent hover:underline"
+                  title="Open the uploaded PDF"
+                  type="button"
+                  onClick={() => viewPdf(invoice.id)}
+                >
+                  {invoice.pi_number}
+                  <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-normal text-muted">Uploaded</span>
+                </button>
+              ) : (
+                <Link className="min-w-0 break-words font-medium text-accent hover:underline" href={`/invoices/${invoice.id}`}>
+                  {invoice.pi_number}
+                </Link>
+              )}
               <span className="shrink-0 text-muted">
                 {invoiceStatusLabel(invoice.status)} · {formatInr(invoice.grand_total)}
               </span>
@@ -357,9 +393,27 @@ function VisitInvoicesSummary({ visit }: { visit: VisitListItem | null }) {
         </ul>
       ) : (
         <p className="text-xs text-muted">
-          {visit ? "No proforma invoice yet." : "Save the visit first, then raise its proforma invoice."}
+          {visit ? "No proforma invoice yet." : "Save the visit first, then raise or upload its proforma invoice."}
         </p>
       )}
+      {visit ? (
+        <ExternalInvoiceDialog
+          invoice={null}
+          isOpen={isUploadOpen}
+          visitId={visit.id}
+          visitLabel={null}
+          onOpenChange={setIsUploadOpen}
+          onSaved={(saved) => {
+            setIsUploadOpen(false);
+            setAdded((prev) => [
+              ...prev.filter((p) => p.id !== saved.id),
+              { ...saved, is_external: true },
+            ]);
+            toast.success(`Proforma invoice ${saved.pi_number} added.`);
+            router.refresh();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
