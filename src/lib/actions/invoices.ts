@@ -104,7 +104,7 @@ export async function deleteInvoice(id: string): Promise<InvoiceActionResult> {
     return {
       error:
         error.code === "23503"
-          ? "Payments are recorded against this proforma invoice. Cancel it instead, or delete its payments under Finance first."
+          ? "Tax invoices are linked to this proforma invoice. Cancel it instead, or unlink them under Finance → Invoices first."
           : "Could not delete the proforma invoice.",
     };
   }

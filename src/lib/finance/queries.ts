@@ -43,37 +43,51 @@ async function visitLabels(supabase: Client, ids: string[], known: Option[]): Pr
 }
 
 // ---------------------------------------------------------------------------
-// Payments received
+// Tax invoices, and what each proforma invoice still has outstanding
 // ---------------------------------------------------------------------------
 
-export type PaymentInvoice = {
+/** An issued (or paid) PI with what its linked tax invoices cover. */
+export type ProformaBalance = {
   id: string;
   piNumber: string;
   piDate: string;
   status: string;
   billingName: string;
+  visitId: string | null;
   grandTotal: number;
   received: number;
   balance: number;
   visitLabel: string | null;
 };
 
-export type PaymentRow = Tables<"invoice_payments"> & { piNumber: string; billingName: string };
+export type TaxInvoiceRow = Tables<"tax_invoices"> & {
+  visitLabel: string;
+  piNumber: string | null;
+};
 
-/** Issued and paid PIs with what has been received against them. */
-export async function loadPaymentInvoices(supabase: Client): Promise<PaymentInvoice[]> {
-  const [{ data: invoices }, { data: payments }] = await Promise.all([
+export async function loadProformaBalances(supabase: Client): Promise<ProformaBalance[]> {
+  const [{ data: invoices }, { data: taxInvoices }] = await Promise.all([
     supabase
       .from("proforma_invoices")
-      .select("id, pi_number, pi_date, status, billing_name, grand_total, visits(visit_date, program_category, source, headcount)")
+      .select(
+        "id, pi_number, pi_date, status, billing_name, visit_id, grand_total, visits(visit_date, program_category, source, headcount)",
+      )
       .in("status", ["issued", "paid"])
       .order("pi_date", { ascending: false })
       .limit(LIST_LIMIT),
-    supabase.from("invoice_payments").select("invoice_id, amount").limit(10 * LIST_LIMIT),
+    supabase
+      .from("tax_invoices")
+      .select("proforma_invoice_id, amount")
+      .not("proforma_invoice_id", "is", null)
+      .limit(10 * LIST_LIMIT),
   ]);
 
   const received = new Map<string, number>();
-  for (const p of payments ?? []) received.set(p.invoice_id, (received.get(p.invoice_id) ?? 0) + Number(p.amount));
+  for (const t of taxInvoices ?? []) {
+    if (t.proforma_invoice_id) {
+      received.set(t.proforma_invoice_id, (received.get(t.proforma_invoice_id) ?? 0) + Number(t.amount));
+    }
+  }
 
   return (invoices ?? []).map((inv) => {
     const got = round2(received.get(inv.id) ?? 0);
@@ -83,6 +97,7 @@ export async function loadPaymentInvoices(supabase: Client): Promise<PaymentInvo
       piDate: inv.pi_date,
       status: inv.status,
       billingName: inv.billing_name,
+      visitId: inv.visit_id,
       grandTotal: Number(inv.grand_total),
       received: got,
       balance: Math.max(0, round2(Number(inv.grand_total) - got)),
@@ -91,18 +106,24 @@ export async function loadPaymentInvoices(supabase: Client): Promise<PaymentInvo
   });
 }
 
-export async function loadPayments(supabase: Client): Promise<PaymentRow[]> {
+export async function loadTaxInvoices(supabase: Client, visitOptions: Option[]): Promise<TaxInvoiceRow[]> {
   const { data } = await supabase
-    .from("invoice_payments")
-    .select("*, proforma_invoices(pi_number, billing_name)")
-    .order("paid_on", { ascending: false })
+    .from("tax_invoices")
+    .select("*, proforma_invoices(pi_number)")
+    .order("invoice_date", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(LIST_LIMIT);
-  return (data ?? []).map(({ proforma_invoices, ...p }) => ({
-    ...p,
-    amount: Number(p.amount),
-    piNumber: proforma_invoices?.pi_number ?? "—",
-    billingName: proforma_invoices?.billing_name ?? "",
+  const rows = data ?? [];
+  const labels = await visitLabels(
+    supabase,
+    rows.map((r) => r.visit_id),
+    visitOptions,
+  );
+  return rows.map(({ proforma_invoices, ...r }) => ({
+    ...r,
+    amount: Number(r.amount),
+    visitLabel: labels.get(r.visit_id) ?? "Trip",
+    piNumber: proforma_invoices?.pi_number ?? null,
   }));
 }
 
@@ -278,7 +299,7 @@ export async function loadFinanceOverview(supabase: Client, from: string, to: st
     { data: payments },
     { data: payouts },
     { data: expenses },
-    paymentInvoices,
+    proformaBalances,
     pending,
   ] = await Promise.all([
     supabase
@@ -295,7 +316,12 @@ export async function loadFinanceOverview(supabase: Client, from: string, to: st
       .gte("visits.visit_date", from)
       .lte("visits.visit_date", to)
       .limit(10 * LIST_LIMIT),
-    supabase.from("invoice_payments").select("paid_on, amount").gte("paid_on", from).lte("paid_on", to).limit(10 * LIST_LIMIT),
+    supabase
+      .from("tax_invoices")
+      .select("invoice_date, amount")
+      .gte("invoice_date", from)
+      .lte("invoice_date", to)
+      .limit(10 * LIST_LIMIT),
     supabase.from("artisan_payouts").select("paid_on, amount").gte("paid_on", from).lte("paid_on", to).limit(10 * LIST_LIMIT),
     supabase
       .from("expenses")
@@ -303,7 +329,7 @@ export async function loadFinanceOverview(supabase: Client, from: string, to: st
       .gte("expense_date", from)
       .lte("expense_date", to)
       .limit(10 * LIST_LIMIT),
-    loadPaymentInvoices(supabase),
+    loadProformaBalances(supabase),
     loadPendingPayouts(supabase, villageOptions),
   ]);
 
@@ -324,13 +350,13 @@ export async function loadFinanceOverview(supabase: Client, from: string, to: st
   const months = monthsBetween(from, to).map((month) => {
     const inMonth = <T,>(rows: T[] | null | undefined, key: (r: T) => string) =>
       (rows ?? []).filter((r) => key(r).startsWith(month));
-    const r = sum(inMonth(payments, (p) => p.paid_on));
+    const r = sum(inMonth(payments, (p) => p.invoice_date));
     const p = sum(inMonth(payouts, (p) => p.paid_on));
     const e = sum(inMonth(expenses, (x) => x.expense_date));
     return { month, received: r, payouts: p, expenses: e, net: round2(r - p - e) };
   });
 
-  const owing = paymentInvoices.filter((i) => i.balance > 0);
+  const owing = proformaBalances.filter((i) => i.balance > 0);
 
   return {
     ruralExperience,

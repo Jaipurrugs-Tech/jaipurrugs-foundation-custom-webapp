@@ -6,15 +6,21 @@ import { createClient } from "@/lib/supabase/server";
 import { RECEIPT_BUCKET, RECEIPT_MAX_BYTES, RECEIPT_MIME_TYPES } from "@/lib/finance/constants";
 import {
   expenseSchema,
-  paymentSchema,
   payoutSchema,
+  taxInvoiceSchema,
   type ExpenseInput,
-  type PaymentInput,
   type PayoutInput,
+  type TaxInvoiceInput,
 } from "@/lib/finance/schemas";
 import { blankToNull } from "@/lib/visits/schemas";
 
 export type FinanceActionResult = { error?: string };
+
+const RECEIPT_EXTENSIONS: Record<string, string> = {
+  "application/pdf": "pdf",
+  "image/png": "png",
+  "image/jpeg": "jpg",
+};
 
 function revalidateFinance() {
   revalidatePath("/finance", "layout");
@@ -24,17 +30,22 @@ function revalidateFinance() {
 }
 
 // ---------------------------------------------------------------------------
-// Payments received (against proforma invoices)
+// Tax invoices (issued in the accounting system once a trip is paid)
 // ---------------------------------------------------------------------------
 
-export async function savePayment(id: string | null, input: PaymentInput): Promise<FinanceActionResult> {
+export async function saveTaxInvoice(
+  id: string | null,
+  input: TaxInvoiceInput,
+): Promise<FinanceActionResult & { id?: string }> {
   const { email } = await requireActiveTeamMember();
-  const parsed = paymentSchema.safeParse(input);
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid payment." };
+  const parsed = taxInvoiceSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid tax invoice." };
   const d = parsed.data;
   const row = {
-    invoice_id: d.invoiceId,
-    paid_on: d.paidOn,
+    visit_id: d.visitId,
+    proforma_invoice_id: d.proformaInvoiceId,
+    invoice_number: d.invoiceNumber,
+    invoice_date: d.invoiceDate,
     amount: d.amount,
     mode: d.mode,
     reference: blankToNull(d.reference),
@@ -42,28 +53,90 @@ export async function savePayment(id: string | null, input: PaymentInput): Promi
   };
 
   const supabase = await createClient();
-  const { error } = id
-    ? await supabase.from("invoice_payments").update(row).eq("id", id)
-    : await supabase.from("invoice_payments").insert({ ...row, created_by: email });
-  if (error) {
+  const { data, error } = id
+    ? await supabase.from("tax_invoices").update(row).eq("id", id).select("id").single()
+    : await supabase
+        .from("tax_invoices")
+        .insert({ ...row, created_by: email })
+        .select("id")
+        .single();
+  if (error || !data) {
     return {
       error:
-        error.code === "23514"
-          ? "Payments can only be recorded against an issued proforma invoice."
-          : "Could not save the payment.",
+        error?.code === "23505"
+          ? "That tax invoice number is already recorded."
+          : error?.code === "23514"
+            ? (error.message ?? "That proforma invoice can't be linked to this trip.")
+            : "Could not save the tax invoice.",
     };
+  }
+  revalidateFinance();
+  return { id: data.id };
+}
+
+export async function deleteTaxInvoice(id: string): Promise<FinanceActionResult> {
+  await requireActiveTeamMember();
+  const supabase = await createClient();
+  const { data: current } = await supabase.from("tax_invoices").select("pdf_path").eq("id", id).maybeSingle();
+  const { error } = await supabase.from("tax_invoices").delete().eq("id", id);
+  if (error) return { error: "Could not delete the tax invoice." };
+  if (current?.pdf_path) await supabase.storage.from(RECEIPT_BUCKET).remove([current.pdf_path]);
+  revalidateFinance();
+  return {};
+}
+
+/** Attaches the tax invoice's PDF (or an image of it), replacing any earlier one. */
+export async function uploadTaxInvoicePdf(taxInvoiceId: string, formData: FormData): Promise<FinanceActionResult> {
+  await requireActiveTeamMember();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file first." };
+  if (!(RECEIPT_MIME_TYPES as readonly string[]).includes(file.type)) {
+    return { error: "Upload the invoice as a PDF, PNG or JPEG." };
+  }
+  if (file.size > RECEIPT_MAX_BYTES) return { error: "Keep the file under 5 MB." };
+
+  const supabase = await createClient();
+  const { data: current } = await supabase.from("tax_invoices").select("pdf_path").eq("id", taxInvoiceId).maybeSingle();
+  if (!current) return { error: "Tax invoice not found." };
+
+  const path = `tax-invoices/${taxInvoiceId}/${Date.now()}.${RECEIPT_EXTENSIONS[file.type]}`;
+  const { error: uploadError } = await supabase.storage
+    .from(RECEIPT_BUCKET)
+    .upload(path, await file.arrayBuffer(), { contentType: file.type, upsert: false });
+  if (uploadError) return { error: "Could not upload the file." };
+
+  const { error } = await supabase.from("tax_invoices").update({ pdf_path: path }).eq("id", taxInvoiceId);
+  if (error) {
+    await supabase.storage.from(RECEIPT_BUCKET).remove([path]);
+    return { error: "Could not save the file." };
+  }
+  if (current.pdf_path && current.pdf_path !== path) {
+    await supabase.storage.from(RECEIPT_BUCKET).remove([current.pdf_path]);
   }
   revalidateFinance();
   return {};
 }
 
-export async function deletePayment(id: string): Promise<FinanceActionResult> {
+export async function removeTaxInvoicePdf(taxInvoiceId: string): Promise<FinanceActionResult> {
   await requireActiveTeamMember();
   const supabase = await createClient();
-  const { error } = await supabase.from("invoice_payments").delete().eq("id", id);
-  if (error) return { error: "Could not delete the payment." };
+  const { data: current } = await supabase.from("tax_invoices").select("pdf_path").eq("id", taxInvoiceId).maybeSingle();
+  const { error } = await supabase.from("tax_invoices").update({ pdf_path: null }).eq("id", taxInvoiceId);
+  if (error) return { error: "Could not remove the file." };
+  if (current?.pdf_path) await supabase.storage.from(RECEIPT_BUCKET).remove([current.pdf_path]);
   revalidateFinance();
   return {};
+}
+
+/** A short-lived link to view a tax invoice's PDF. */
+export async function getTaxInvoicePdfUrl(taxInvoiceId: string): Promise<FinanceActionResult & { url?: string }> {
+  await requireActiveTeamMember();
+  const supabase = await createClient();
+  const { data } = await supabase.from("tax_invoices").select("pdf_path").eq("id", taxInvoiceId).maybeSingle();
+  if (!data?.pdf_path) return { error: "No PDF is attached to this tax invoice." };
+  const { data: signed } = await supabase.storage.from(RECEIPT_BUCKET).createSignedUrl(data.pdf_path, 600);
+  if (!signed?.signedUrl) return { error: "Could not open the PDF." };
+  return { url: signed.signedUrl };
 }
 
 // ---------------------------------------------------------------------------
@@ -156,12 +229,6 @@ export async function deleteExpense(id: string): Promise<FinanceActionResult> {
   revalidateFinance();
   return {};
 }
-
-const RECEIPT_EXTENSIONS: Record<string, string> = {
-  "application/pdf": "pdf",
-  "image/png": "png",
-  "image/jpeg": "jpg",
-};
 
 /** Attaches a receipt (PDF, PNG or JPEG) to an expense, replacing any earlier one. */
 export async function uploadExpenseReceipt(expenseId: string, formData: FormData): Promise<FinanceActionResult> {

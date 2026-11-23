@@ -583,53 +583,6 @@ export type Database = {
           },
         ]
       }
-      invoice_payments: {
-        Row: {
-          amount: number
-          created_at: string
-          created_by: string | null
-          id: string
-          invoice_id: string
-          mode: string
-          notes: string | null
-          paid_on: string
-          reference: string | null
-          updated_at: string
-        }
-        Insert: {
-          amount: number
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          invoice_id: string
-          mode?: string
-          notes?: string | null
-          paid_on?: string
-          reference?: string | null
-          updated_at?: string
-        }
-        Update: {
-          amount?: number
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          invoice_id?: string
-          mode?: string
-          notes?: string | null
-          paid_on?: string
-          reference?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "invoice_payments_invoice_id_fkey"
-            columns: ["invoice_id"]
-            isOneToOne: false
-            referencedRelation: "proforma_invoices"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       invoice_settings: {
         Row: {
           bank_account_name: string | null
@@ -1490,6 +1443,69 @@ export type Database = {
           visitor_categories?: string[]
         }
         Relationships: []
+      }
+      tax_invoices: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: string
+          invoice_date: string
+          invoice_number: string
+          mode: string
+          notes: string | null
+          pdf_path: string | null
+          proforma_invoice_id: string | null
+          reference: string | null
+          updated_at: string
+          visit_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number: string
+          mode?: string
+          notes?: string | null
+          pdf_path?: string | null
+          proforma_invoice_id?: string | null
+          reference?: string | null
+          updated_at?: string
+          visit_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number?: string
+          mode?: string
+          notes?: string | null
+          pdf_path?: string | null
+          proforma_invoice_id?: string | null
+          reference?: string | null
+          updated_at?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_invoices_proforma_invoice_id_fkey"
+            columns: ["proforma_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "proforma_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tax_invoices_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       team_members: {
         Row: {

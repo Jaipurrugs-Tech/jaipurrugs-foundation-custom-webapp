@@ -61,7 +61,7 @@ src/
     visits/                                  # visit-operations schemas, constants, IST time helpers, queries (phase 11)
     scheduler/                               # scheduled WhatsApp sends: dispatcher + inbox mirror (server-only, service-role; phase 11)
     invoices/                                # services + proforma invoices: pricing maths (mirrors the SQL), schemas, queries, PDF (phase 12)
-    finance/                                 # payments received, artisan payouts, expenses, overview queries (phase 13)
+    finance/                                 # tax invoices, artisan payouts, expenses, overview queries (phase 13)
   proxy.ts                                   # (admin)-only session + whitelist gate (Next.js 16: renamed from middleware.ts)
 supabase/
   migrations/                                # one .sql file per schema change, incl. RLS
@@ -145,7 +145,7 @@ Detailed scope, do's, and don'ts for each phase live in `docs/phases/`. This tab
 | 10 | WhatsApp inbox, 24h window, AI auto-replies + staff takeover, per-contact memory | Admin — Inbox, webhook, DB, Zernio | [docs/phases/10-whatsapp-inbox.md](docs/phases/10-whatsapp-inbox.md) |
 | 11 | Visit operations: calendar, trips, villages, experiences, partners, guests (leads), scheduled WhatsApp messaging, dashboard | Admin — Operations, DB, agent tools, scheduler | [docs/phases/11-visit-operations.md](docs/phases/11-visit-operations.md) |
 | 12 | Services (rates, GST, locations, programs, visitor types, headcount slabs, free guides) and proforma invoices (PI numbering, T&C, PDF with UPI QR); a visit's revenue comes from its PIs | Admin — Services, Proforma invoices, Trips, DB, Storage | [docs/phases/12-services-invoices.md](docs/phases/12-services-invoices.md) |
-| 13 | Finance: payments received against PIs (auto Paid/Issued), artisan payouts vs. a trip's amount to artisans, expenses with receipts, overview by Indian FY; Services and PIs move under a Finance sidebar group | Admin — Finance, DB, Storage | [docs/phases/13-finance.md](docs/phases/13-finance.md) |
+| 13 | Finance: tax invoices per trip with PDF, optionally settling a PI (auto Paid/Issued), artisan payouts vs. a trip's amount to artisans, expenses with receipts, overview by Indian FY; Services and PIs move under a Finance sidebar group | Admin — Finance, DB, Storage | [docs/phases/13-finance.md](docs/phases/13-finance.md) |
 
 <!-- BEGIN:nextjs-agent-rules -->
 

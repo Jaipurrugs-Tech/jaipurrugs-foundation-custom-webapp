@@ -477,7 +477,7 @@ export function TripsView({
                       </div>
                     </Table.Cell>
                     <Table.Cell>
-                      <TripInvoicesCell invoices={visit.invoices} visitId={visit.id} />
+                      <TripInvoicesCell taxInvoices={visit.taxInvoices} visitId={visit.id} />
                     </Table.Cell>
                     <Table.Cell>
                       <VisitStatusChip status={visit.status} />

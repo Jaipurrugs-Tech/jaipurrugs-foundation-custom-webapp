@@ -1,6 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/supabase";
-import type { VisitInvoice, VisitListItem, VisitPrimaryGuest, VisitReference, VisitRow, VisitSale } from "./types";
+import type {
+  VisitInvoice,
+  VisitListItem,
+  VisitPrimaryGuest,
+  VisitReference,
+  VisitRow,
+  VisitSale,
+  VisitTaxInvoice,
+} from "./types";
 
 type Client = SupabaseClient<Database>;
 
@@ -39,14 +47,25 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
     .select("id, visit_id, pi_number, pi_date, status, taxable_total, grand_total")
     .not("visit_id", "is", null)
     .order("pi_date");
+  const taxInvoicesQuery = supabase
+    .from("tax_invoices")
+    .select("id, visit_id, invoice_number, invoice_date, amount, pdf_path")
+    .order("invoice_date", { ascending: false });
 
-  const [{ data: villageRows }, { data: experienceRows }, { data: guestRows }, { data: saleRows }, { data: invoiceRows }] =
-    await Promise.all([
+  const [
+    { data: villageRows },
+    { data: experienceRows },
+    { data: guestRows },
+    { data: saleRows },
+    { data: invoiceRows },
+    { data: taxInvoiceRows },
+  ] = await Promise.all([
       scoped ? villagesQuery.in("visit_id", scoped) : villagesQuery,
       scoped ? experiencesQuery.in("visit_id", scoped) : experiencesQuery,
       scoped ? guestsQuery.in("visit_id", scoped) : guestsQuery,
       scoped ? salesQuery.in("visit_id", scoped) : salesQuery,
       scoped ? invoicesQuery.in("visit_id", scoped) : invoicesQuery,
+      scoped ? taxInvoicesQuery.in("visit_id", scoped) : taxInvoicesQuery,
     ]);
 
   const villageIds = new Map<string, string[]>();
@@ -64,6 +83,10 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
   const invoices = new Map<string, VisitInvoice[]>();
   for (const { visit_id, ...invoice } of invoiceRows ?? []) {
     if (visit_id) invoices.set(visit_id, [...(invoices.get(visit_id) ?? []), invoice]);
+  }
+  const taxInvoices = new Map<string, VisitTaxInvoice[]>();
+  for (const { visit_id, ...taxInvoice } of taxInvoiceRows ?? []) {
+    taxInvoices.set(visit_id, [...(taxInvoices.get(visit_id) ?? []), { ...taxInvoice, amount: Number(taxInvoice.amount) }]);
   }
   const guestCounts = new Map<string, number>();
   const primaryGuests = new Map<string, VisitPrimaryGuest>();
@@ -87,6 +110,7 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
     guestCount: guestCounts.get(visit.id) ?? 0,
     sales: sales.get(visit.id) ?? [],
     invoices: invoices.get(visit.id) ?? [],
+    taxInvoices: taxInvoices.get(visit.id) ?? [],
     primaryGuest: primaryGuests.get(visit.id) ?? null,
   }));
 }

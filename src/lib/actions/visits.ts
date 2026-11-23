@@ -229,6 +229,7 @@ export async function createVisit(input: VisitInput): Promise<VisitActionResult 
       guestCount: 0,
       sales: savedSales ?? [],
       invoices: [],
+      taxInvoices: [],
       primaryGuest: null,
     },
   };

@@ -62,8 +62,8 @@ export default async function FinanceOverviewPage({
       <div>
         <h1 className="text-xl font-semibold">Finance</h1>
         <p className="text-sm text-muted">
-          {period.label}: {formatDate(period.from)} – {formatDate(period.to)}. Money in is payments received against
-          proforma invoices; money out is artisan payouts and expenses.
+          {period.label}: {formatDate(period.from)} – {formatDate(period.to)}. Money in is tax invoices for paid trips;
+          money out is artisan payouts and expenses.
         </p>
       </div>
 
@@ -71,7 +71,7 @@ export default async function FinanceOverviewPage({
 
       <Section title="Cash flow" description="Money that actually moved in the period.">
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard label="Received" value={formatRupees(o.received)} />
+          <StatCard label="Received" value={formatRupees(o.received)} hint="tax invoices" />
           <StatCard label="Artisan payouts" value={formatRupees(o.payouts)} />
           <StatCard label="Expenses" value={formatRupees(o.expenses)} />
           <StatCard label="Net" value={<Amount tone="signed" value={o.net} />} hint="received − payouts − expenses" />
@@ -80,7 +80,7 @@ export default async function FinanceOverviewPage({
 
       <Section title="Needs attention" description="Open right now, whatever the period.">
         <div className="grid grid-cols-2 gap-4">
-          <Link className="rounded-2xl transition-opacity hover:opacity-80" href="/finance/payments">
+          <Link className="rounded-2xl transition-opacity hover:opacity-80" href="/finance/invoices">
             <StatCard
               label="Outstanding from clients"
               value={formatRupees(o.outstanding.amount)}
