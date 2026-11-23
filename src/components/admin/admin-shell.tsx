@@ -7,10 +7,13 @@ import {
   ArrowRightFromSquare,
   Bell,
   Briefcase,
+  ChartColumn,
   Comment,
   Comments,
+  CreditCard,
   FileText,
   Gear,
+  HandOk,
   House,
   LayoutSideContentLeft,
   MapPin,
@@ -21,12 +24,16 @@ import {
   SquareListUl,
   Suitcase,
   TagDollar,
+  Wallet,
 } from "@gravity-ui/icons";
 import { Avatar, Button, Dropdown, Header, Label, Separator, Toast } from "@heroui/react";
 import { signOut } from "@/lib/actions/auth";
 import { OrgLogo } from "@/components/ui/org-logo";
 
-const NAV_GROUPS: { label?: string; items: { href: string; label: string; icon: typeof House }[] }[] = [
+// `exact`: only highlight on that path itself, not its sub-pages (the Finance overview).
+type NavItem = { href: string; label: string; icon: typeof House; exact?: boolean };
+
+const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
   {
     items: [
       { href: "/dashboard", label: "Dashboard", icon: House },
@@ -40,12 +47,21 @@ const NAV_GROUPS: { label?: string; items: { href: string; label: string; icon: 
     label: "Operations",
     items: [
       { href: "/trips", label: "Trips", icon: Suitcase },
-      { href: "/services", label: "Services", icon: TagDollar },
-      { href: "/invoices", label: "Proforma invoices", icon: Receipt },
       { href: "/villages", label: "Villages", icon: MapPin },
       { href: "/partners", label: "Partners", icon: Briefcase },
       { href: "/facilitators", label: "Facilitators", icon: PersonWorker },
       { href: "/messaging", label: "Visit messages", icon: Bell },
+    ],
+  },
+  {
+    label: "Finance",
+    items: [
+      { href: "/finance", label: "Overview", icon: ChartColumn, exact: true },
+      { href: "/finance/payments", label: "Payments received", icon: CreditCard },
+      { href: "/finance/payouts", label: "Artisan payouts", icon: HandOk },
+      { href: "/finance/expenses", label: "Expenses", icon: Wallet },
+      { href: "/services", label: "Services", icon: TagDollar },
+      { href: "/invoices", label: "Proforma invoices", icon: Receipt },
     ],
   },
   {
@@ -96,8 +112,8 @@ export function AdminShell({ email, children }: { email: string; children: React
                     {group.label}
                   </p>
                 ))}
-              {group.items.map(({ href, label, icon: Icon }) => {
-                const isActive = pathname === href || pathname.startsWith(`${href}/`);
+              {group.items.map(({ href, label, icon: Icon, exact }) => {
+                const isActive = pathname === href || (!exact && pathname.startsWith(`${href}/`));
                 return (
                   <Link
                     key={href}

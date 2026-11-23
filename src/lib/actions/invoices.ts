@@ -100,7 +100,14 @@ export async function deleteInvoice(id: string): Promise<InvoiceActionResult> {
   await requireActiveTeamMember();
   const supabase = await createClient();
   const { error } = await supabase.from("proforma_invoices").delete().eq("id", id);
-  if (error) return { error: "Could not delete the proforma invoice." };
+  if (error) {
+    return {
+      error:
+        error.code === "23503"
+          ? "Payments are recorded against this proforma invoice. Cancel it instead, or delete its payments under Finance first."
+          : "Could not delete the proforma invoice.",
+    };
+  }
   revalidateInvoices();
   return {};
 }

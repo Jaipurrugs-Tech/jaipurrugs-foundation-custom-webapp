@@ -20,6 +20,7 @@ const ADMIN_PATH_PREFIXES = [
   "/messaging",
   "/services",
   "/invoices",
+  "/finance",
 ];
 
 function isAdminPath(pathname: string) {
