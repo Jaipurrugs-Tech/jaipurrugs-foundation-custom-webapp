@@ -454,6 +454,182 @@ export type Database = {
         }
         Relationships: []
       }
+      artisan_payouts: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: string
+          mode: string
+          notes: string | null
+          paid_on: string
+          payee: string
+          reference: string | null
+          updated_at: string
+          village_id: string | null
+          visit_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mode?: string
+          notes?: string | null
+          paid_on?: string
+          payee: string
+          reference?: string | null
+          updated_at?: string
+          village_id?: string | null
+          visit_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mode?: string
+          notes?: string | null
+          paid_on?: string
+          payee?: string
+          reference?: string | null
+          updated_at?: string
+          village_id?: string | null
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "artisan_payouts_village_id_fkey"
+            columns: ["village_id"]
+            isOneToOne: false
+            referencedRelation: "villages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "artisan_payouts_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string
+          expense_date: string
+          id: string
+          mode: string
+          notes: string | null
+          paid_to: string | null
+          receipt_path: string | null
+          reference: string | null
+          updated_at: string
+          village_id: string | null
+          visit_id: string | null
+        }
+        Insert: {
+          amount: number
+          category: string
+          created_at?: string
+          created_by?: string | null
+          description: string
+          expense_date?: string
+          id?: string
+          mode?: string
+          notes?: string | null
+          paid_to?: string | null
+          receipt_path?: string | null
+          reference?: string | null
+          updated_at?: string
+          village_id?: string | null
+          visit_id?: string | null
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          expense_date?: string
+          id?: string
+          mode?: string
+          notes?: string | null
+          paid_to?: string | null
+          receipt_path?: string | null
+          reference?: string | null
+          updated_at?: string
+          village_id?: string | null
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_village_id_fkey"
+            columns: ["village_id"]
+            isOneToOne: false
+            referencedRelation: "villages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: string
+          invoice_id: string
+          mode: string
+          notes: string | null
+          paid_on: string
+          reference: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_id: string
+          mode?: string
+          notes?: string | null
+          paid_on?: string
+          reference?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_id?: string
+          mode?: string
+          notes?: string | null
+          paid_on?: string
+          reference?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "proforma_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_settings: {
         Row: {
           bank_account_name: string | null
