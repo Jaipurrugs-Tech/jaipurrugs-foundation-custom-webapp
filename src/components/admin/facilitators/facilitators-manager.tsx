@@ -38,14 +38,15 @@ function FacilitatorForm({ facilitator, onSaved }: { facilitator: FacilitatorRow
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Phone is optional; when given it must be digits.
     const number = phoneNumber.trim();
-    if (!/^[\d\s-]{6,20}$/.test(number)) {
+    if (number && !/^[\d\s-]{6,20}$/.test(number)) {
       setError("Enter the phone number using digits only.");
       return;
     }
     setIsPending(true);
     setError(null);
-    const input = { name, email, phone: joinPhone(phoneCode, number) };
+    const input = { name, email, phone: number ? joinPhone(phoneCode, number) : "" };
     const result = facilitator ? await updateFacilitator(facilitator.id, input) : await createFacilitator(input);
     setIsPending(false);
     if (result.error) {
@@ -62,15 +63,14 @@ function FacilitatorForm({ facilitator, onSaved }: { facilitator: FacilitatorRow
         <Input placeholder="e.g. Shanti Devi" />
       </TextField>
 
-      <TextField isRequired type="email" value={email} onChange={setEmail}>
-        <Label>Email</Label>
+      <TextField type="email" value={email} onChange={setEmail}>
+        <Label>Email (optional)</Label>
         <Input placeholder="name@jaipurrugs.org" />
       </TextField>
 
       <PhoneField
-        isRequired
         code={phoneCode}
-        label="Phone number"
+        label="Phone number (optional)"
         number={phoneNumber}
         onCodeChange={setPhoneCode}
         onNumberChange={setPhoneNumber}
@@ -95,7 +95,7 @@ export function FacilitatorsManager({ facilitators }: { facilitators: Facilitato
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return facilitators;
-    return facilitators.filter((f) => [f.name, f.email, f.phone].some((s) => s.toLowerCase().includes(q)));
+    return facilitators.filter((f) => [f.name, f.email ?? "", f.phone ?? ""].some((s) => s.toLowerCase().includes(q)));
   }, [facilitators, query]);
 
   function openForm(facilitator: FacilitatorRow | null) {
@@ -167,17 +167,25 @@ export function FacilitatorsManager({ facilitators }: { facilitators: Facilitato
                   <Table.Row key={facilitator.id}>
                     <Table.Cell className="font-medium">{facilitator.name}</Table.Cell>
                     <Table.Cell>
-                      <a className="text-accent hover:underline" href={`mailto:${facilitator.email}`}>
-                        {facilitator.email}
-                      </a>
+                      {facilitator.email ? (
+                        <a className="text-accent hover:underline" href={`mailto:${facilitator.email}`}>
+                          {facilitator.email}
+                        </a>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
                     </Table.Cell>
                     <Table.Cell className="whitespace-nowrap">
-                      <a
-                        className="text-accent hover:underline"
-                        href={`tel:${facilitator.phone.replace(/\s+/g, "")}`}
-                      >
-                        {formatPhone(facilitator.phone)}
-                      </a>
+                      {facilitator.phone ? (
+                        <a
+                          className="text-accent hover:underline"
+                          href={`tel:${facilitator.phone.replace(/\s+/g, "")}`}
+                        >
+                          {formatPhone(facilitator.phone)}
+                        </a>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
                     </Table.Cell>
                     <Table.Cell>
                       <Switch
