@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireActiveTeamMember } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import { facilitatorSchema, type FacilitatorInput } from "@/lib/visits/schemas";
+import { blankToNull, facilitatorSchema, type FacilitatorInput } from "@/lib/visits/schemas";
 
 export type FacilitatorActionResult = { error?: string };
 
@@ -17,7 +17,7 @@ function revalidateFacilitators() {
 }
 
 function facilitatorRow(data: ReturnType<typeof facilitatorSchema.parse>) {
-  return { name: data.name, email: data.email, phone: data.phone };
+  return { name: data.name, email: blankToNull(data.email), phone: blankToNull(data.phone) };
 }
 
 export async function createFacilitator(input: FacilitatorInput): Promise<FacilitatorActionResult> {

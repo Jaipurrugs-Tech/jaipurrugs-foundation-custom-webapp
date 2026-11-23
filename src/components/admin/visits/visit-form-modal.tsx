@@ -822,7 +822,7 @@ function VisitForm({
                 value={facilitatorId}
                 onChange={setFacilitatorId}
               />
-              {selectedFacilitator ? (
+              {selectedFacilitator?.phone ? (
                 <p className="text-xs text-muted">{formatPhone(selectedFacilitator.phone)}</p>
               ) : legacyCoordinator ? (
                 <p className="text-xs text-muted">

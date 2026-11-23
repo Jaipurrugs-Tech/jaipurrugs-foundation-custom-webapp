@@ -88,8 +88,9 @@ export type PartnerInput = z.input<typeof partnerSchema>;
 
 export const facilitatorSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(120),
-  email: z.string().trim().min(1, "Email is required.").max(200).email("Enter a valid email address."),
-  phone: z.string().trim().min(1, "Phone number is required.").max(30),
+  // Only the name is required; email and phone may be left blank.
+  email: z.union([z.literal(""), z.string().trim().max(200).email("Enter a valid email address.")]),
+  phone: z.string().trim().max(30),
 });
 
 export type FacilitatorInput = z.input<typeof facilitatorSchema>;
