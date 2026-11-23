@@ -6,7 +6,7 @@ import { applyRuleSetToVisit } from "@/lib/actions/messaging";
 import { normalizePhone } from "@/lib/mastra/phone";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/types/supabase";
-import { VISIT_DETAIL_VIEWS, VISIT_STATUSES, programLabel, type VisitDetailView } from "@/lib/visits/constants";
+import { VISIT_DETAIL_VIEWS, VISIT_STATUSES, programLabel, programsLabel, type VisitDetailView } from "@/lib/visits/constants";
 import { blankToNull, guestSchema, guestStatusSchema, visitSchema, type VisitInput } from "@/lib/visits/schemas";
 import { MAX_IMPORT_ROWS, validateGuestRows, type ParsedGuestRow, type RowProblem } from "@/lib/visits/guest-import";
 import type { LeadMatch, VisitGuestItem, VisitListItem } from "@/lib/visits/types";
@@ -25,8 +25,8 @@ function revalidateVisits() {
 // left untouched here rather than cleared on every save.
 function visitRow(data: ReturnType<typeof visitSchema.parse>) {
   return {
-    // The program's label doubles as the visit type that message sequences match on.
-    visit_type: programLabel(data.programCategory),
+    // The programs' labels double as the visit type ("A + B"); sequences match any one program.
+    visit_type: programsLabel(data.programCategories),
     visit_date: data.visitDate,
     end_date: data.endDate && data.endDate !== data.visitDate ? data.endDate : null,
     start_time: data.startTime,
@@ -38,7 +38,9 @@ function visitRow(data: ReturnType<typeof visitSchema.parse>) {
     headcount: data.headcount,
     source: blankToNull(data.source),
     origin_place: blankToNull(data.originPlace),
-    program_category: data.programCategory,
+    // The first program is kept in program_category for older readers (a trigger also syncs it).
+    program_category: data.programCategories[0],
+    program_categories: [...new Set(data.programCategories)],
     visitor_category: data.visitorCategory,
     booking_channel: data.bookingChannel,
     // amount_charged (Rural Experience revenue) is maintained from the visit's proforma invoices.
@@ -208,9 +210,12 @@ export async function createVisit(input: VisitInput): Promise<VisitActionResult 
     .select("id, visit_type")
     .eq("is_active", true)
     .not("visit_type", "is", null);
-  const typeKey = created.visit_type.trim().toLowerCase();
+  // A sequence applies when it names any one of the visit's programs (or the combined type).
+  const typeKeys = new Set(
+    [created.visit_type, ...parsed.data.programCategories.map(programLabel)].map((t) => t.trim().toLowerCase()),
+  );
   for (const sequence of sequences ?? []) {
-    if (sequence.visit_type?.trim().toLowerCase() === typeKey) {
+    if (sequence.visit_type && typeKeys.has(sequence.visit_type.trim().toLowerCase())) {
       await applyRuleSetToVisit(created.id, sequence.id);
     }
   }

@@ -121,7 +121,7 @@ function sameValue(field: LineField, a: string, b: string) {
 function fitsVisit(service: ServiceItem, visit: InvoiceVisitOption | null) {
   if (!visit) return true;
   return (
-    (service.program_categories.length === 0 || service.program_categories.includes(visit.programCategory)) &&
+    (service.program_categories.length === 0 || service.program_categories.some((p) => visit.programCategories.includes(p))) &&
     (service.visitor_categories.length === 0 ||
       (visit.visitorCategory !== null && service.visitor_categories.includes(visit.visitorCategory))) &&
     (service.villageIds.length === 0 ||

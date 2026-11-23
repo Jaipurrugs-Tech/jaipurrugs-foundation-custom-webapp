@@ -63,7 +63,7 @@ const VISIT_OPTION_LIMIT = 400;
 export async function loadInvoiceVisitOptions(supabase: Client, includeId?: string | null): Promise<InvoiceVisitOption[]> {
   const { data: visits } = await supabase
     .from("visits")
-    .select("id, visit_date, status, program_category, visitor_category, headcount, source")
+    .select("id, visit_date, status, program_category, program_categories, visitor_category, headcount, source")
     .neq("status", "cancelled")
     .order("visit_date", { ascending: false, nullsFirst: false })
     .limit(VISIT_OPTION_LIMIT);
@@ -71,7 +71,7 @@ export async function loadInvoiceVisitOptions(supabase: Client, includeId?: stri
   if (includeId && !rows.some((v) => v.id === includeId)) {
     const { data: linked } = await supabase
       .from("visits")
-      .select("id, visit_date, status, program_category, visitor_category, headcount, source")
+      .select("id, visit_date, status, program_category, program_categories, visitor_category, headcount, source")
       .eq("id", includeId)
       .maybeSingle();
     if (linked) rows.unshift(linked);
@@ -95,7 +95,7 @@ export async function loadInvoiceVisitOptions(supabase: Client, includeId?: stri
       label: visitOptionLabel({ ...visit, primaryGuestName }),
       visitDate: visit.visit_date,
       status: visit.status,
-      programCategory: visit.program_category,
+      programCategories: visit.program_categories?.length ? visit.program_categories : [visit.program_category],
       visitorCategory: visit.visitor_category,
       headcount: visit.headcount,
       source: visit.source,
