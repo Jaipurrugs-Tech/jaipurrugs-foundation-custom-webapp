@@ -211,6 +211,15 @@ export function TripsView({
   // Looked up from the latest data so the drawer reflects edits after a refresh.
   const detailVisit = visits.find((v) => v.id === detailId) ?? null;
   const villageName = useMemo(() => new Map(reference.villages.map((v) => [v.id, v.name])), [reference.villages]);
+  const facilitatorName = useMemo(
+    () => new Map(reference.facilitators.map((f) => [f.id, f.name])),
+    [reference.facilitators],
+  );
+  /** All the trip's facilitators, main first; trips from before facilitators show the typed name. */
+  const facilitatorNames = (v: VisitListItem) =>
+    v.facilitatorIds.length
+      ? v.facilitatorIds.map((id) => facilitatorName.get(id) ?? "Unknown").join(", ")
+      : (v.poc_name ?? "");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -220,7 +229,7 @@ export function TripsView({
       if (status !== ALL && v.status !== status) return false;
       if (program !== ALL && !(v.program_categories ?? [v.program_category]).includes(program)) return false;
       if (villageId !== ALL && !v.villageIds.includes(villageId)) return false;
-      if (facilitatorId !== ALL && v.facilitator_id !== facilitatorId) return false;
+      if (facilitatorId !== ALL && !v.facilitatorIds.includes(facilitatorId)) return false;
       if (from && to) {
         // Keep visits that overlap the chosen range.
         if (!v.visit_date) return false;
@@ -235,6 +244,7 @@ export function TripsView({
         v.primaryGuest?.phone ?? "",
         v.primaryGuest?.email ?? "",
         v.facilitator ?? "",
+        facilitatorNames(v),
         v.visitor_category ? visitorCategoryLabel(v.visitor_category) : "",
         v.visitor_group ?? "",
         v.source ?? "",
@@ -243,7 +253,8 @@ export function TripsView({
         ...v.villageIds.map((id) => villageName.get(id) ?? ""),
       ].some((s) => s.toLowerCase().includes(q));
     });
-  }, [visits, status, program, villageId, facilitatorId, dateRange, query, villageName]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- facilitatorNames derives from facilitatorName
+  }, [visits, status, program, villageId, facilitatorId, dateRange, query, villageName, facilitatorName]);
 
   const filtersActive = query !== "" || status !== ALL || program !== ALL || villageId !== ALL || facilitatorId !== ALL || dateRange !== null;
 
@@ -452,7 +463,9 @@ export function TripsView({
                         <span className="text-muted">—</span>
                       )}
                     </Table.Cell>
-                    <Table.Cell>{visit.poc_name ?? <span className="text-muted">—</span>}</Table.Cell>
+                    <Table.Cell className="max-w-[200px]">
+                      {facilitatorNames(visit) || <span className="text-muted">—</span>}
+                    </Table.Cell>
                     <Table.Cell>
                       <span className="block max-w-[200px] truncate">
                         {visit.visitor_category ? (

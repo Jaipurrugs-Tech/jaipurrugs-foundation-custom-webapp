@@ -65,7 +65,7 @@ const STEPS: { title: string; fields: (keyof VisitInput)[] }[] = [
       "endTime",
       "visitorCategory",
       "bookingChannel",
-      "facilitatorId",
+      "facilitatorIds",
       "pocGuestName",
       "pocGuestPhone",
       "pocGuestEmail",
@@ -507,7 +507,8 @@ function VisitForm({
   const [pocPhoneCode, setPocPhoneCode] = useState(initialPocPhone.code);
   const [pocPhoneNumber, setPocPhoneNumber] = useState(initialPocPhone.number);
   const [pocEmail, setPocEmail] = useState(visit?.primaryGuest?.email ?? "");
-  const [facilitatorId, setFacilitatorId] = useState(visit?.facilitator_id ?? "");
+  // In the order picked; the first is the trip's main facilitator.
+  const [facilitatorIds, setFacilitatorIds] = useState<string[]>(visit?.facilitatorIds ?? []);
   const [partnerId, setPartnerId] = useState(visit?.partner_id ?? "");
   const [headcount, setHeadcount] = useState(numberToText(visit?.headcount ?? null));
   const [originPlace, setOriginPlace] = useState(visit?.origin_place ?? "");
@@ -550,11 +551,11 @@ function VisitForm({
       ),
     [reference.experiences, villageIds, experienceIds],
   );
-  // Active facilitators, plus the one already on this visit even if they have since been deactivated.
+  // Active facilitators, plus any already on this visit even if they have since been deactivated.
   const facilitatorOptions = reference.facilitators
-    .filter((f) => f.is_active || f.id === facilitatorId)
+    .filter((f) => f.is_active || facilitatorIds.includes(f.id))
     .map((f) => ({ id: f.id, label: f.is_active ? f.name : `${f.name} (inactive)` }));
-  const selectedFacilitator = reference.facilitators.find((f) => f.id === facilitatorId);
+  const selectedFacilitator = reference.facilitators.find((f) => f.id === facilitatorIds[0]);
   // Visits from before facilitators existed carry a hand-typed name and phone.
   const legacyCoordinator = !visit?.facilitator_id && visit?.poc_name ? visit : null;
   const partnerOptions = reference.partners
@@ -583,7 +584,7 @@ function VisitForm({
       startTime: fromTime(startTime),
       endTime: fromTime(endTime),
       status: status as VisitInput["status"],
-      facilitatorId,
+      facilitatorIds,
       pocGuestName: pocName,
       pocGuestPhone: joinPhone(pocPhoneCode, pocPhoneNumber),
       pocGuestEmail: pocEmail,
@@ -814,16 +815,42 @@ function VisitForm({
               onChange={setBookingChannel}
             />
 
-            <div className="flex flex-col gap-1">
-              <OptionSelect
-                label="Facilitator"
-                noneLabel="Not assigned"
-                options={facilitatorOptions}
-                value={facilitatorId}
-                onChange={setFacilitatorId}
-              />
+            <div className="flex flex-col gap-2 sm:col-span-2">
+              <span className="text-sm font-medium">
+                Facilitators
+                <span className="ml-2 text-xs font-normal text-muted">
+                  Click to select one or more. The first picked is the main facilitator.
+                </span>
+              </span>
+              {facilitatorOptions.length > 0 ? (
+                <TagGroup
+                  aria-label="Facilitators"
+                  selectedKeys={new Set(facilitatorIds)}
+                  selectionMode="multiple"
+                  onSelectionChange={(keys) => {
+                    const next = keys === "all" ? facilitatorOptions.map((f) => f.id) : [...keys].map(String);
+                    // Keep the order they were picked in.
+                    setFacilitatorIds((prev) => [...prev.filter((id) => next.includes(id)), ...next.filter((id) => !prev.includes(id))]);
+                  }}
+                >
+                  <TagGroup.List className="flex flex-wrap gap-2">
+                    {facilitatorOptions.map((f) => {
+                      const index = facilitatorIds.indexOf(f.id);
+                      return (
+                        <Tag key={f.id} className="cursor-pointer px-3 py-1.5 text-sm" id={f.id} textValue={f.label}>
+                          {index >= 0 ? <Check className="size-3.5" /> : null}
+                          {f.label}
+                          {index === 0 && facilitatorIds.length > 1 ? <span className="text-xs opacity-70">(main)</span> : null}
+                        </Tag>
+                      );
+                    })}
+                  </TagGroup.List>
+                </TagGroup>
+              ) : null}
               {selectedFacilitator?.phone ? (
-                <p className="text-xs text-muted">{formatPhone(selectedFacilitator.phone)}</p>
+                <p className="text-xs text-muted">
+                  Main facilitator: {selectedFacilitator.name} · {formatPhone(selectedFacilitator.phone)}
+                </p>
               ) : legacyCoordinator ? (
                 <p className="text-xs text-muted">
                   Previously entered: {legacyCoordinator.poc_name}

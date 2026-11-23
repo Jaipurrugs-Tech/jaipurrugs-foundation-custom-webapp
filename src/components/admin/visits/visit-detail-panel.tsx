@@ -98,9 +98,14 @@ function VisitDetails({
       <Section
         title="Team"
         rows={[
-          { label: "Facilitator", value: visit.poc_name },
           {
-            label: "Facilitator phone",
+            label: visit.facilitatorIds.length > 1 ? "Facilitators" : "Facilitator",
+            value: visit.facilitatorIds.length
+              ? visit.facilitatorIds.map((id) => reference.facilitators.find((f) => f.id === id)?.name ?? "Unknown").join(", ")
+              : visit.poc_name,
+          },
+          {
+            label: visit.facilitatorIds.length > 1 ? "Main facilitator's phone" : "Facilitator phone",
             value: visit.poc_phone ? (
               <a className="text-accent hover:underline" href={`tel:${visit.poc_phone.replace(/\s+/g, "")}`}>
                 {formatPhone(visit.poc_phone)}

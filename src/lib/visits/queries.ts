@@ -47,6 +47,10 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
     .select("id, visit_id, pi_number, pi_date, status, taxable_total, grand_total, is_external")
     .not("visit_id", "is", null)
     .order("pi_date");
+  const facilitatorsQuery = supabase
+    .from("visit_facilitators")
+    .select("visit_id, facilitator_id, position")
+    .order("position");
   const taxInvoicesQuery = supabase
     .from("tax_invoices")
     .select("id, visit_id, invoice_number, invoice_date, amount, pdf_path")
@@ -59,6 +63,7 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
     { data: saleRows },
     { data: invoiceRows },
     { data: taxInvoiceRows },
+    { data: facilitatorRows },
   ] = await Promise.all([
       scoped ? villagesQuery.in("visit_id", scoped) : villagesQuery,
       scoped ? experiencesQuery.in("visit_id", scoped) : experiencesQuery,
@@ -66,6 +71,7 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
       scoped ? salesQuery.in("visit_id", scoped) : salesQuery,
       scoped ? invoicesQuery.in("visit_id", scoped) : invoicesQuery,
       scoped ? taxInvoicesQuery.in("visit_id", scoped) : taxInvoicesQuery,
+      scoped ? facilitatorsQuery.in("visit_id", scoped) : facilitatorsQuery,
     ]);
 
   const villageIds = new Map<string, string[]>();
@@ -87,6 +93,10 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
   const taxInvoices = new Map<string, VisitTaxInvoice[]>();
   for (const { visit_id, ...taxInvoice } of taxInvoiceRows ?? []) {
     taxInvoices.set(visit_id, [...(taxInvoices.get(visit_id) ?? []), { ...taxInvoice, amount: Number(taxInvoice.amount) }]);
+  }
+  const facilitatorIds = new Map<string, string[]>();
+  for (const row of facilitatorRows ?? []) {
+    facilitatorIds.set(row.visit_id, [...(facilitatorIds.get(row.visit_id) ?? []), row.facilitator_id]);
   }
   const guestCounts = new Map<string, number>();
   const primaryGuests = new Map<string, VisitPrimaryGuest>();
@@ -111,6 +121,7 @@ export async function attachVisitRelations(supabase: Client, visits: VisitRow[])
     sales: sales.get(visit.id) ?? [],
     invoices: invoices.get(visit.id) ?? [],
     taxInvoices: taxInvoices.get(visit.id) ?? [],
+    facilitatorIds: facilitatorIds.get(visit.id) ?? (visit.facilitator_id ? [visit.facilitator_id] : []),
     primaryGuest: primaryGuests.get(visit.id) ?? null,
   }));
 }
