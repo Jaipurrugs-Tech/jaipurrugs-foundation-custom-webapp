@@ -3,8 +3,9 @@
 import { Children, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowsExpand, ChevronDown, Envelope, LayoutSideContentRight, Pencil, Persons } from "@gravity-ui/icons";
-import { Button, Chip, Drawer, Dropdown, Label, Modal } from "@heroui/react";
+import { Button, Chip, Drawer, Dropdown, Label, Modal, toast } from "@heroui/react";
 import { invoiceStatusLabel } from "@/lib/invoices/constants";
+import { openExternalInvoicePdf } from "@/lib/invoices/open-external";
 import { formatPhone } from "@/lib/mastra/phone";
 import {
   SALE_CHANNELS,
@@ -184,9 +185,25 @@ function VisitDetails({
             <ul className="flex flex-col divide-y divide-border/60 rounded-xl border border-border/70">
               {visit.invoices.map((invoice) => (
                 <li key={invoice.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                  <Link className="min-w-0 break-words font-medium text-accent hover:underline" href={`/invoices/${invoice.id}`}>
-                    {invoice.pi_number}
-                  </Link>
+                  {invoice.is_external ? (
+                    <button
+                      className="min-w-0 break-words text-left font-medium text-accent hover:underline"
+                      title="Open the uploaded PDF"
+                      type="button"
+                      onClick={() =>
+                        openExternalInvoicePdf(invoice.id).catch((error: unknown) =>
+                          toast.danger(error instanceof Error ? error.message : "Could not open the PDF."),
+                        )
+                      }
+                    >
+                      {invoice.pi_number}
+                      <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-normal text-muted">Uploaded</span>
+                    </button>
+                  ) : (
+                    <Link className="min-w-0 break-words font-medium text-accent hover:underline" href={`/invoices/${invoice.id}`}>
+                      {invoice.pi_number}
+                    </Link>
+                  )}
                   <span className="shrink-0 text-muted">
                     {invoiceStatusLabel(invoice.status)} · {rupees.format(invoice.grand_total)}
                   </span>

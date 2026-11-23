@@ -41,6 +41,7 @@ import type { VisitListItem, VisitReference } from "@/lib/visits/types";
 import { VisitMessagingModal, useVisitMessaging } from "../messaging/visit-messaging-modal";
 import { VisitsCalendar } from "./calendar-view";
 import { ALL, FilterSelect } from "./filter-select";
+import { TaxInvoiceDialog } from "../finance/tax-invoice-dialog";
 import { TripInvoicesCell } from "./trip-invoices-cell";
 import { VisitDetailPanel } from "./visit-detail-panel";
 import { VisitFormModal } from "./visit-form-modal";
@@ -200,6 +201,8 @@ export function TripsView({
   const [isDetailOpen, setIsDetailOpen] = useState(initialVisitId !== null);
   const [detailView, setDetailView] = useState<VisitDetailView>(initialDetailView);
   const [editing, setEditing] = useState<VisitListItem | null>(null);
+  // The trip whose "Add invoice" was pressed: the tax invoice form opens right here.
+  const [invoiceTrip, setInvoiceTrip] = useState<{ id: string; label: string } | null>(null);
   const [formDate, setFormDate] = useState(today);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const guestsModal = useVisitGuests();
@@ -477,7 +480,21 @@ export function TripsView({
                       </div>
                     </Table.Cell>
                     <Table.Cell>
-                      <TripInvoicesCell taxInvoices={visit.taxInvoices} visitId={visit.id} />
+                      <TripInvoicesCell
+                        taxInvoices={visit.taxInvoices}
+                        onAdd={() =>
+                          setInvoiceTrip({
+                            id: visit.id,
+                            label: [
+                              formatDateRange(visit.visit_date, visit.end_date),
+                              visit.visit_type,
+                              visit.primaryGuest?.name ?? visit.source,
+                            ]
+                              .filter(Boolean)
+                              .join(" · "),
+                          })
+                        }
+                      />
                     </Table.Cell>
                     <Table.Cell>
                       <VisitStatusChip status={visit.status} />
@@ -498,6 +515,16 @@ export function TripsView({
           </Table.ScrollContainer>
         </Table>
       )}
+
+      <TaxInvoiceDialog
+        trip={invoiceTrip}
+        onClose={() => setInvoiceTrip(null)}
+        onSaved={() => {
+          setInvoiceTrip(null);
+          toast.success("Tax invoice added.");
+          router.refresh();
+        }}
+      />
 
       <VisitDetailPanel
         isOpen={isDetailOpen}

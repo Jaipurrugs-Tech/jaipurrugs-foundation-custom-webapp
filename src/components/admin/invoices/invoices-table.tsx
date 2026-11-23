@@ -125,6 +125,9 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceListItem[] }) {
                         <Link className="hover:underline" href={`/invoices/${invoice.id}`}>
                           {invoice.pi_number}
                         </Link>
+                        {invoice.is_external ? (
+                          <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-normal text-muted">Uploaded</span>
+                        ) : null}
                       </Table.Cell>
                       <Table.Cell className="tabular-nums">{formatPiDate(invoice.pi_date)}</Table.Cell>
                       <Table.Cell className="max-w-56 truncate">{invoice.billing_name}</Table.Cell>
@@ -144,7 +147,7 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceListItem[] }) {
                       </Table.Cell>
                       <Table.Cell className="text-right">
                         <div className="flex justify-end">
-                          <PdfActions compact invoiceId={invoice.id} />
+                          <PdfActions compact external={invoice.is_external} invoiceId={invoice.id} />
                           <Button
                             isIconOnly
                             aria-label="Edit proforma invoice"

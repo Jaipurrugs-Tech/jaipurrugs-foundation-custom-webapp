@@ -29,7 +29,7 @@ import { StatCard } from "../visits/stat-card";
 import { ConfirmDelete } from "./confirm-delete";
 
 /** What the form opens with: an existing tax invoice, or a new one for a trip and/or PI. */
-type FormTarget = { taxInvoice: TaxInvoiceRow | null; visitId: string | null; proformaId: string | null };
+export type FormTarget = { taxInvoice: TaxInvoiceRow | null; visitId: string | null; proformaId: string | null };
 
 /** Words of a name worth matching on (drops initials and titles). */
 function nameTokens(name: string): string[] {
@@ -56,7 +56,7 @@ function matchTrip(customerName: string, trips: Option[]): string | null {
   return scored[0].id;
 }
 
-function TaxInvoiceForm({
+export function TaxInvoiceForm({
   target,
   proformas,
   visitOptions,
@@ -206,6 +206,8 @@ function TaxInvoiceForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Keep a surrounding form (if any) from also submitting; React bubbles through portals.
+    e.stopPropagation();
     setIsPending(true);
     setError(null);
     const result = await saveTaxInvoice(taxInvoice?.id ?? null, {

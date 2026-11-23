@@ -1120,8 +1120,10 @@ export type Database = {
           guests: number
           guides: number
           id: string
+          is_external: boolean
           notes: string | null
           payment_terms: string | null
+          pdf_path: string | null
           pi_date: string
           pi_number: string
           status: string
@@ -1144,8 +1146,10 @@ export type Database = {
           guests?: number
           guides?: number
           id?: string
+          is_external?: boolean
           notes?: string | null
           payment_terms?: string | null
+          pdf_path?: string | null
           pi_date?: string
           pi_number: string
           status?: string
@@ -1168,8 +1172,10 @@ export type Database = {
           guests?: number
           guides?: number
           id?: string
+          is_external?: boolean
           notes?: string | null
           payment_terms?: string | null
+          pdf_path?: string | null
           pi_date?: string
           pi_number?: string
           status?: string

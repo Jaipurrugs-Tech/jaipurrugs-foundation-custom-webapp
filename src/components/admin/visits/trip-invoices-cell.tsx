@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Plus } from "@gravity-ui/icons";
 import { Button, toast } from "@heroui/react";
 import { openTaxInvoicePdf } from "@/lib/finance/open-tax-invoice";
@@ -16,8 +15,7 @@ const SHOWN = 2;
  * A number with a PDF opens it in a new tab. HeroUI Buttons (React Aria presses), so
  * pressing them doesn't also open the visit's detail panel.
  */
-export function TripInvoicesCell({ visitId, taxInvoices }: { visitId: string; taxInvoices: VisitTaxInvoice[] }) {
-  const router = useRouter();
+export function TripInvoicesCell({ taxInvoices, onAdd }: { taxInvoices: VisitTaxInvoice[]; onAdd: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
 
   async function view(id: string) {
@@ -37,7 +35,7 @@ export function TripInvoicesCell({ visitId, taxInvoices }: { visitId: string; ta
         className="h-auto min-h-0 px-1.5 py-1 text-xs text-muted"
         size="sm"
         variant="ghost"
-        onPress={() => router.push(`/finance/invoices?visit=${visitId}`)}
+        onPress={onAdd}
       >
         <Plus className="size-3.5" />
         Add invoice

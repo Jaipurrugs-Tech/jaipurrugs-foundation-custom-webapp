@@ -14,6 +14,10 @@ export type ExtractedTaxInvoice = {
   invoiceDate: string | null;
   /** The grand total payable, including GST. */
   amount: number | null;
+  /** The value before GST (taxable value), if shown. */
+  taxableAmount: number | null;
+  /** The total GST (CGST + SGST + IGST), if shown. */
+  gstAmount: number | null;
   /** Who the invoice is billed to. */
   customerName: string | null;
   paymentMode: (typeof PAYMENT_MODES)[number]["id"] | null;
@@ -28,18 +32,25 @@ const SCHEMA = {
     "invoice_number",
     "invoice_date",
     "grand_total",
+    "taxable_amount",
+    "gst_amount",
     "customer_name",
     "payment_mode",
     "payment_reference",
   ],
   properties: {
-    is_invoice: { type: "boolean", description: "True if the document is an invoice or bill." },
+    is_invoice: { type: "boolean", description: "True if the document is an invoice, proforma invoice, quotation or bill." },
     invoice_number: { type: ["string", "null"], description: "The invoice number exactly as printed." },
     invoice_date: { type: ["string", "null"], description: "The invoice date as YYYY-MM-DD." },
     grand_total: {
       type: ["number", "null"],
       description: "The final total payable in rupees including GST/taxes, as a plain number (no commas or symbols).",
     },
+    taxable_amount: {
+      type: ["number", "null"],
+      description: "The value before GST (taxable value / sub-total after discounts), in rupees.",
+    },
+    gst_amount: { type: ["number", "null"], description: "Total GST charged (CGST + SGST + IGST), in rupees." },
     customer_name: { type: ["string", "null"], description: "The name of the person or company billed (Bill to / Buyer)." },
     payment_mode: {
       type: ["string", "null"],
@@ -53,10 +64,16 @@ const SCHEMA = {
   },
 } as const;
 
-const PROMPT = `Read this tax invoice and extract its details for our accounts.
+const PROMPTS = {
+  tax: "Read this tax invoice and extract its details for our accounts.",
+  proforma: "Read this proforma invoice (or quotation / estimate) and extract its details for our accounts.",
+} as const;
+
+const PROMPT_RULES = `
 - invoice_number: the invoice number exactly as printed (not a PO, order or GSTIN number).
 - invoice_date: the invoice date, converted to YYYY-MM-DD. Indian invoices write dates day-first (e.g. 05/11/2026 is 5 November 2026).
 - grand_total: the final amount payable including GST, in rupees.
+- taxable_amount and gst_amount: the value before GST and the total GST, if the document shows them.
 - customer_name: who it is billed to (Bill to / Buyer / Customer), not the seller.
 - payment_mode and payment_reference: only if the invoice actually states them; otherwise null.
 Use null for anything not present. Never guess.`;
@@ -69,18 +86,25 @@ function cleanText(value: unknown, max = 200): string | null {
   return trimmed ? trimmed.slice(0, max) : null;
 }
 
+function money(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.round(value * 100) / 100 : null;
+}
+
 export async function extractTaxInvoice({
   bytes,
   mimeType,
   fileName,
   apiKey,
   model,
+  kind = "tax",
 }: {
   bytes: ArrayBuffer;
   mimeType: string;
   fileName: string;
   apiKey: string;
   model: string;
+  /** Which document this is; only changes the wording of the request. */
+  kind?: keyof typeof PROMPTS;
 }): Promise<ExtractedTaxInvoice> {
   const dataUrl = `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
   const filePart =
@@ -94,7 +118,7 @@ export async function extractTaxInvoice({
     body: JSON.stringify({
       model,
       reasoning: { effort: "low" },
-      input: [{ role: "user", content: [filePart, { type: "input_text", text: PROMPT }] }],
+      input: [{ role: "user", content: [filePart, { type: "input_text", text: `${PROMPTS[kind]}\n${PROMPT_RULES}` }] }],
       text: { format: { type: "json_schema", name: "tax_invoice", strict: true, schema: SCHEMA } },
     }),
     signal: AbortSignal.timeout(90_000),
@@ -125,6 +149,8 @@ export async function extractTaxInvoice({
     invoiceNumber: cleanText(raw.invoice_number, 100),
     invoiceDate: date && DATE_PATTERN.test(date) && !Number.isNaN(Date.parse(`${date}T00:00:00Z`)) ? date : null,
     amount: total,
+    taxableAmount: money(raw.taxable_amount),
+    gstAmount: money(raw.gst_amount),
     customerName: cleanText(raw.customer_name),
     paymentMode: mode,
     paymentReference: cleanText(raw.payment_reference),

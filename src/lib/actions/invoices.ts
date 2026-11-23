@@ -2,13 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { requireActiveTeamMember } from "@/lib/auth/session";
+import { RECEIPT_BUCKET, RECEIPT_MAX_BYTES, RECEIPT_MIME_TYPES } from "@/lib/finance/constants";
+import { extractTaxInvoice, type ExtractedTaxInvoice } from "@/lib/finance/extract-invoice";
 import { QR_MAX_BYTES, QR_MIME_TYPES } from "@/lib/invoices/constants";
+import { resolveOpenAIKey } from "@/lib/openai/keys";
 import {
+  externalInvoiceSchema,
   invoiceSchema,
   invoiceSettingsSchema,
   invoiceStatusSchema,
   invoiceTermSchema,
   invoiceTermSnapshotSchema,
+  type ExternalInvoiceInput,
   type InvoiceInput,
   type InvoiceSettingsInput,
   type InvoiceTermInput,
@@ -45,6 +50,11 @@ export async function saveInvoice(id: string | null, input: InvoiceInput): Promi
   const data = parsed.data;
 
   const supabase = await createClient();
+  if (id) {
+    // An uploaded PI has no lines: saving it here would reset its totals to zero.
+    const { data: current } = await supabase.from("proforma_invoices").select("is_external").eq("id", id).maybeSingle();
+    if (current?.is_external) return { error: "This proforma invoice was uploaded. Edit it from its own page instead." };
+  }
   const { data: savedId, error } = await supabase.rpc("save_proforma_invoice", {
     p_id: id,
     p_invoice: {
@@ -99,6 +109,7 @@ export async function setInvoiceStatus(id: string, status: string): Promise<Invo
 export async function deleteInvoice(id: string): Promise<InvoiceActionResult> {
   await requireActiveTeamMember();
   const supabase = await createClient();
+  const { data: current } = await supabase.from("proforma_invoices").select("pdf_path").eq("id", id).maybeSingle();
   const { error } = await supabase.from("proforma_invoices").delete().eq("id", id);
   if (error) {
     return {
@@ -108,6 +119,7 @@ export async function deleteInvoice(id: string): Promise<InvoiceActionResult> {
           : "Could not delete the proforma invoice.",
     };
   }
+  if (current?.pdf_path) await supabase.storage.from(RECEIPT_BUCKET).remove([current.pdf_path]);
   revalidateInvoices();
   return {};
 }
@@ -298,4 +310,133 @@ export async function deleteInvoiceTerm(id: string): Promise<InvoiceActionResult
   if (error) return { error: "Could not delete the term." };
   revalidateInvoices();
   return {};
+}
+
+// ---------------------------------------------------------------------------
+// Proforma invoices made outside the platform (uploaded with their PDF)
+// ---------------------------------------------------------------------------
+
+const PDF_EXTENSIONS: Record<string, string> = { "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg" };
+
+// The model that reads uploaded invoices (OpenAI; must accept PDF and image input).
+const INVOICE_READER_MODEL = process.env.INVOICE_READER_MODEL?.trim() || "gpt-5-mini";
+
+function checkPdfFile(file: FormDataEntryValue | null): File | string {
+  if (!(file instanceof File) || file.size === 0) return "Choose a file first.";
+  if (!(RECEIPT_MIME_TYPES as readonly string[]).includes(file.type)) return "Upload the PI as a PDF, PNG or JPEG.";
+  if (file.size > RECEIPT_MAX_BYTES) return "Keep the file under 5 MB.";
+  return file;
+}
+
+/** Creates or updates an uploaded PI. Its totals are typed in (or read from the PDF), not computed. */
+export async function saveExternalInvoice(
+  id: string | null,
+  input: ExternalInvoiceInput,
+): Promise<InvoiceActionResult & { id?: string }> {
+  const { email } = await requireActiveTeamMember();
+  const parsed = externalInvoiceSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid proforma invoice." };
+  const d = parsed.data;
+  const taxable = Math.round((d.grandTotal - d.gstTotal) * 100) / 100;
+  const row = {
+    visit_id: d.visitId,
+    pi_number: d.piNumber,
+    pi_date: d.piDate,
+    billing_name: d.billingName,
+    status: d.status,
+    notes: blankToNull(d.notes),
+    subtotal: taxable,
+    discount_total: 0,
+    taxable_total: taxable,
+    gst_total: d.gstTotal,
+    grand_total: d.grandTotal,
+    is_external: true,
+  };
+
+  const supabase = await createClient();
+  if (id) {
+    const { data: current } = await supabase.from("proforma_invoices").select("is_external").eq("id", id).maybeSingle();
+    if (!current?.is_external) return { error: "Only an uploaded proforma invoice can be edited here." };
+  }
+  const { data, error } = id
+    ? await supabase.from("proforma_invoices").update(row).eq("id", id).select("id").single()
+    : await supabase
+        .from("proforma_invoices")
+        .insert({ ...row, created_by: email })
+        .select("id")
+        .single();
+  if (error || !data) {
+    return {
+      error: error?.code === "23505" ? "A proforma invoice with that number already exists." : "Could not save the proforma invoice.",
+    };
+  }
+  revalidateInvoices();
+  revalidatePath("/finance", "layout");
+  return { id: data.id };
+}
+
+export async function uploadExternalInvoicePdf(invoiceId: string, formData: FormData): Promise<InvoiceActionResult> {
+  await requireActiveTeamMember();
+  const file = checkPdfFile(formData.get("file"));
+  if (typeof file === "string") return { error: file };
+
+  const supabase = await createClient();
+  const { data: current } = await supabase
+    .from("proforma_invoices")
+    .select("pdf_path, is_external")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (!current?.is_external) return { error: "Proforma invoice not found." };
+
+  const path = `proforma-invoices/${invoiceId}/${Date.now()}.${PDF_EXTENSIONS[file.type]}`;
+  const { error: uploadError } = await supabase.storage
+    .from(RECEIPT_BUCKET)
+    .upload(path, await file.arrayBuffer(), { contentType: file.type, upsert: false });
+  if (uploadError) return { error: "Could not upload the file." };
+
+  const { error } = await supabase.from("proforma_invoices").update({ pdf_path: path }).eq("id", invoiceId);
+  if (error) {
+    await supabase.storage.from(RECEIPT_BUCKET).remove([path]);
+    return { error: "Could not save the file." };
+  }
+  if (current.pdf_path && current.pdf_path !== path) await supabase.storage.from(RECEIPT_BUCKET).remove([current.pdf_path]);
+  revalidateInvoices();
+  return {};
+}
+
+/** A short-lived link to an uploaded PI's PDF. */
+export async function getExternalInvoicePdfUrl(invoiceId: string): Promise<InvoiceActionResult & { url?: string }> {
+  await requireActiveTeamMember();
+  const supabase = await createClient();
+  const { data } = await supabase.from("proforma_invoices").select("pdf_path").eq("id", invoiceId).maybeSingle();
+  if (!data?.pdf_path) return { error: "No PDF is attached to this proforma invoice." };
+  const { data: signed } = await supabase.storage.from(RECEIPT_BUCKET).createSignedUrl(data.pdf_path, 600);
+  if (!signed?.signedUrl) return { error: "Could not open the PDF." };
+  return { url: signed.signedUrl };
+}
+
+/** Reads an uploaded PI (PDF or image) so its form fills itself. Nothing is saved here. */
+export async function readProformaFile(
+  formData: FormData,
+): Promise<InvoiceActionResult & { details?: ExtractedTaxInvoice }> {
+  await requireActiveTeamMember();
+  const file = checkPdfFile(formData.get("file"));
+  if (typeof file === "string") return { error: file };
+  const key = await resolveOpenAIKey();
+  if (!key) return { error: "Reading PDFs needs an OpenAI key (Settings → Configuration). Fill the details in by hand." };
+  try {
+    const details = await extractTaxInvoice({
+      bytes: await file.arrayBuffer(),
+      mimeType: file.type,
+      fileName: file.name,
+      apiKey: key.key,
+      model: INVOICE_READER_MODEL,
+      kind: "proforma",
+    });
+    if (!details.isInvoice) return { error: "This file doesn't look like an invoice. Check it, or fill the details in by hand." };
+    return { details };
+  } catch (error) {
+    console.error("[invoices] could not read the proforma invoice:", error);
+    return { error: "Couldn't read the PDF automatically. Fill the details in by hand." };
+  }
 }

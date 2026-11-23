@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { RECEIPT_BUCKET, RECEIPT_MAX_BYTES, RECEIPT_MIME_TYPES } from "@/lib/finance/constants";
 import { extractTaxInvoice, type ExtractedTaxInvoice } from "@/lib/finance/extract-invoice";
 import { resolveOpenAIKey } from "@/lib/openai/keys";
+import { loadProformaBalances, type ProformaBalance } from "@/lib/finance/queries";
 import {
   expenseSchema,
   payoutSchema,
@@ -310,4 +311,12 @@ export async function removeExpenseReceipt(expenseId: string): Promise<FinanceAc
   if (current?.receipt_path) await supabase.storage.from(RECEIPT_BUCKET).remove([current.receipt_path]);
   revalidateFinance();
   return {};
+}
+
+/** The PIs a tax invoice for this trip could settle: the trip's own, and ones not tied to a trip. */
+export async function loadTripProformas(visitId: string): Promise<ProformaBalance[]> {
+  await requireActiveTeamMember();
+  const supabase = await createClient();
+  const all = await loadProformaBalances(supabase);
+  return all.filter((p) => p.visitId === visitId || p.visitId === null);
 }

@@ -17,7 +17,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
     supabase
       .from("proforma_invoices")
       .select(
-        "id, pi_number, pi_date, status, visit_id, billing_name, guests, taxable_total, grand_total, updated_at, visits(visit_date, program_category, source, headcount)",
+        "id, pi_number, pi_date, status, visit_id, billing_name, guests, taxable_total, grand_total, is_external, updated_at, visits(visit_date, program_category, source, headcount)",
       )
       .order("pi_date", { ascending: false })
       .order("created_at", { ascending: false })
