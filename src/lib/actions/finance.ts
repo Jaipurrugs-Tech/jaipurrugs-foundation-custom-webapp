@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requireActiveTeamMember } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { RECEIPT_BUCKET, RECEIPT_MAX_BYTES, RECEIPT_MIME_TYPES } from "@/lib/finance/constants";
+import { extractTaxInvoice, type ExtractedTaxInvoice } from "@/lib/finance/extract-invoice";
+import { resolveOpenAIKey } from "@/lib/openai/keys";
 import {
   expenseSchema,
   payoutSchema,
@@ -126,6 +128,43 @@ export async function removeTaxInvoicePdf(taxInvoiceId: string): Promise<Finance
   if (current?.pdf_path) await supabase.storage.from(RECEIPT_BUCKET).remove([current.pdf_path]);
   revalidateFinance();
   return {};
+}
+
+// The model that reads uploaded tax invoices (OpenAI; must accept PDF and image input).
+const INVOICE_READER_MODEL = process.env.INVOICE_READER_MODEL?.trim() || "gpt-5-mini";
+
+/**
+ * Reads an uploaded tax invoice (PDF or image) and returns its details, so the
+ * form fills itself. Nothing is saved here; the file is only sent to OpenAI.
+ */
+export async function readTaxInvoiceFile(
+  formData: FormData,
+): Promise<FinanceActionResult & { details?: ExtractedTaxInvoice }> {
+  await requireActiveTeamMember();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file first." };
+  if (!(RECEIPT_MIME_TYPES as readonly string[]).includes(file.type)) {
+    return { error: "Upload the invoice as a PDF, PNG or JPEG." };
+  }
+  if (file.size > RECEIPT_MAX_BYTES) return { error: "Keep the file under 5 MB." };
+
+  const key = await resolveOpenAIKey();
+  if (!key) return { error: "Reading invoices needs an OpenAI key (Settings → Configuration). Fill the details in by hand." };
+
+  try {
+    const details = await extractTaxInvoice({
+      bytes: await file.arrayBuffer(),
+      mimeType: file.type,
+      fileName: file.name,
+      apiKey: key.key,
+      model: INVOICE_READER_MODEL,
+    });
+    if (!details.isInvoice) return { error: "This file doesn't look like an invoice. Check it, or fill the details in by hand." };
+    return { details };
+  } catch (error) {
+    console.error("[finance] could not read the tax invoice:", error);
+    return { error: "Couldn't read the invoice automatically. Fill the details in by hand." };
+  }
 }
 
 /** A short-lived link to view a tax invoice's PDF. */

@@ -3,9 +3,15 @@
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUpFromLine, FileText, Pencil, Plus, TrashBin } from "@gravity-ui/icons";
-import { Button, Input, Label, Modal, SearchField, Switch, Table, TextArea, TextField, toast } from "@heroui/react";
-import { deleteTaxInvoice, removeTaxInvoicePdf, saveTaxInvoice, uploadTaxInvoicePdf } from "@/lib/actions/finance";
+import { ArrowUpFromLine, FileText, Pencil, Plus, Sparkles, TrashBin } from "@gravity-ui/icons";
+import { Button, Input, Label, Modal, SearchField, Spinner, Switch, Table, TextArea, TextField, toast } from "@heroui/react";
+import {
+  deleteTaxInvoice,
+  readTaxInvoiceFile,
+  removeTaxInvoicePdf,
+  saveTaxInvoice,
+  uploadTaxInvoicePdf,
+} from "@/lib/actions/finance";
 import {
   PAYMENT_MODES,
   RECEIPT_MAX_BYTES,
@@ -24,6 +30,31 @@ import { ConfirmDelete } from "./confirm-delete";
 
 /** What the form opens with: an existing tax invoice, or a new one for a trip and/or PI. */
 type FormTarget = { taxInvoice: TaxInvoiceRow | null; visitId: string | null; proformaId: string | null };
+
+/** Words of a name worth matching on (drops initials and titles). */
+function nameTokens(name: string): string[] {
+  const skip = new Set(["mr", "mrs", "ms", "dr", "the", "and", "pvt", "ltd", "private", "limited"]);
+  return name
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((t) => t.length >= 3 && !skip.has(t));
+}
+
+/** The one trip whose label mentions the billed name, if exactly one does. */
+function matchTrip(customerName: string, trips: Option[]): string | null {
+  const tokens = nameTokens(customerName);
+  if (tokens.length === 0) return null;
+  const scored = trips
+    .map((trip) => {
+      const words = new Set(nameTokens(trip.label));
+      return { id: trip.id, score: tokens.filter((t) => words.has(t)).length };
+    })
+    .filter((t) => t.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (scored.length === 0) return null;
+  if (scored.length > 1 && scored[1].score === scored[0].score) return null;
+  return scored[0].id;
+}
 
 function TaxInvoiceForm({
   target,
@@ -52,6 +83,8 @@ function TaxInvoiceForm({
   const [removePdf, setRemovePdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const [isReading, setIsReading] = useState(false);
+  const [readNote, setReadNote] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Keep the linked trip selectable even when it's older than the picker's list.
@@ -94,6 +127,67 @@ function TaxInvoiceForm({
     }
     setError(null);
     setFile(next);
+    void readDetails(next);
+  }
+
+  /** Fills the form from the invoice itself; staff only check and save. */
+  async function readDetails(next: File) {
+    setIsReading(true);
+    setReadNote(null);
+    const form = new FormData();
+    form.append("file", next);
+    const result = await readTaxInvoiceFile(form);
+    setIsReading(false);
+    if (result.error || !result.details) {
+      setReadNote({ tone: "warn", text: result.error ?? "Couldn't read the invoice. Fill the details in by hand." });
+      return;
+    }
+    const d = result.details;
+    const filled: string[] = [];
+    if (d.invoiceNumber) {
+      setInvoiceNumber(d.invoiceNumber);
+      filled.push("number");
+    }
+    if (d.invoiceDate) {
+      setInvoiceDate(d.invoiceDate);
+      filled.push("date");
+    }
+    if (d.amount !== null) {
+      setAmount(String(d.amount));
+      filled.push("amount");
+    }
+    if (d.paymentMode) setMode(d.paymentMode);
+    if (d.paymentReference) setReference(d.paymentReference);
+
+    let trip = visitId;
+    let tripNote = "";
+    if (!trip && d.customerName) {
+      const matched = matchTrip(d.customerName, trips);
+      if (matched) {
+        trip = matched;
+        chooseTrip(matched);
+        filled.push("trip");
+      } else {
+        tripNote = ` Billed to ${d.customerName}: choose the trip.`;
+      }
+    }
+    // Link the trip's PI when the invoice settles exactly its balance.
+    if (trip && !proformaId && d.amount !== null) {
+      const due = proformas.filter((p) => p.visitId === trip && p.balance > 0 && Math.abs(p.balance - d.amount!) <= 1);
+      if (due.length === 1) {
+        setProformaId(due[0].id);
+        filled.push("proforma invoice");
+      }
+    }
+
+    const missing = [!d.invoiceNumber && "number", !d.invoiceDate && "date", d.amount === null && "amount"].filter(Boolean);
+    setReadNote({
+      tone: missing.length ? "warn" : "ok",
+      text:
+        (filled.length ? `Filled from the invoice: ${filled.join(", ")}. Check before saving.` : "") +
+        (missing.length ? ` Couldn't find the ${missing.join(", ")}.` : "") +
+        tripNote,
+    });
   }
 
   function chooseProforma(id: string) {
@@ -144,6 +238,47 @@ function TaxInvoiceForm({
 
   return (
     <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+      <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border p-3">
+        <span className="text-sm font-medium">Invoice PDF</span>
+        <input
+          ref={fileInput}
+          accept={RECEIPT_MIME_TYPES.join(",")}
+          className="hidden"
+          type="file"
+          onChange={(e) => {
+            const next = e.target.files?.[0];
+            e.target.value = "";
+            pickFile(next);
+          }}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button isDisabled={isReading} size="sm" variant="secondary" onPress={() => fileInput.current?.click()}>
+            <ArrowUpFromLine className="size-4" />
+            {file || hasPdf ? "Replace PDF" : "Upload PDF"}
+          </Button>
+          {file ? (
+            <span className="max-w-56 truncate text-xs text-muted">{file.name}</span>
+          ) : hasPdf ? (
+            <Button size="sm" variant="ghost" onPress={() => setRemovePdf(true)}>
+              Remove current PDF
+            </Button>
+          ) : (
+            <span className="text-xs text-muted">Upload it first: the details below fill in from it.</span>
+          )}
+        </div>
+        {isReading ? (
+          <p className="flex items-center gap-2 text-xs text-muted">
+            <Spinner size="sm" />
+            Reading the invoice…
+          </p>
+        ) : readNote ? (
+          <p className={`flex items-start gap-1.5 text-xs ${readNote.tone === "ok" ? "text-success" : "text-warning"}`}>
+            <Sparkles className="mt-0.5 size-3.5 shrink-0" />
+            {readNote.text.trim()}
+          </p>
+        ) : null}
+      </div>
+
       <OptionSelect isRequired label="Trip" options={trips} placeholder="Choose the trip" value={visitId} onChange={chooseTrip} />
       <OptionSelect
         label="Proforma invoice it settles"
@@ -178,38 +313,8 @@ function TaxInvoiceForm({
         <TextArea placeholder="Optional" rows={2} />
       </TextField>
 
-      <div className="flex flex-col gap-2">
-        <span className="text-sm font-medium">Invoice PDF</span>
-        <input
-          ref={fileInput}
-          accept={RECEIPT_MIME_TYPES.join(",")}
-          className="hidden"
-          type="file"
-          onChange={(e) => {
-            const next = e.target.files?.[0];
-            e.target.value = "";
-            pickFile(next);
-          }}
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="secondary" onPress={() => fileInput.current?.click()}>
-            <ArrowUpFromLine className="size-4" />
-            {file || hasPdf ? "Replace PDF" : "Upload PDF"}
-          </Button>
-          {file ? (
-            <span className="max-w-56 truncate text-xs text-muted">{file.name}</span>
-          ) : hasPdf ? (
-            <Button size="sm" variant="ghost" onPress={() => setRemovePdf(true)}>
-              Remove current PDF
-            </Button>
-          ) : (
-            <span className="text-xs text-muted">PDF, PNG or JPEG, up to 5 MB</span>
-          )}
-        </div>
-      </div>
-
       {error ? <p className="text-sm text-danger">{error}</p> : null}
-      <Button fullWidth isPending={isPending} type="submit">
+      <Button fullWidth isDisabled={isReading} isPending={isPending} type="submit">
         {taxInvoice ? "Save changes" : "Add tax invoice"}
       </Button>
     </form>
