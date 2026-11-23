@@ -159,7 +159,7 @@ export function DashboardView({
       <Section title="Reach & economic value">
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
           <StatCard label="Visitors" value={reach.visitors} hint={`${reach.visits} visits`} />
-          <StatCard label="Total income" value={formatInr(economic.total_income)} />
+          <StatCard label="Total income" value={formatInr(economic.total_income)} hint="tax invoices incl. GST, else PIs" />
           <StatCard
             label="To artisan families"
             value={formatInr(economic.income_to_artisans)}
