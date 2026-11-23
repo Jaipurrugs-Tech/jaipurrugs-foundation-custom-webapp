@@ -171,7 +171,8 @@ export const visitSchema = z
     ),
     // The JRF staff member who runs (hosts) the visit; their name and phone are copied onto
     // the visit by the database (see supabase/migrations/20261103*_facilitator*.sql).
-    facilitatorId: optionalUuid,
+    // In the order picked; the first is the trip's main facilitator.
+    facilitatorIds: z.array(z.string().uuid("Pick a facilitator.")).max(20, "That is too many facilitators."),
     partnerId: optionalUuid,
     headcount: optionalInt(0, 100_000, "Headcount must be a whole number."),
     source: optionalText(120),

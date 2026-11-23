@@ -1732,6 +1732,42 @@ export type Database = {
           },
         ]
       }
+      visit_facilitators: {
+        Row: {
+          created_at: string
+          facilitator_id: string
+          position: number
+          visit_id: string
+        }
+        Insert: {
+          created_at?: string
+          facilitator_id: string
+          position?: number
+          visit_id: string
+        }
+        Update: {
+          created_at?: string
+          facilitator_id?: string
+          position?: number
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visit_facilitators_facilitator_id_fkey"
+            columns: ["facilitator_id"]
+            isOneToOne: false
+            referencedRelation: "facilitators"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_facilitators_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       visit_sales: {
         Row: {
           amount: number

@@ -33,7 +33,8 @@ function visitRow(data: ReturnType<typeof visitSchema.parse>) {
     end_time: data.endTime,
     status: data.status,
     // poc_name / poc_phone / facilitator (the host) are filled in from the facilitator by a trigger.
-    facilitator_id: data.facilitatorId,
+    // The main (first) facilitator; triggers copy their name and phone onto the visit.
+    facilitator_id: data.facilitatorIds[0] ?? null,
     partner_id: data.partnerId,
     headcount: data.headcount,
     source: blankToNull(data.source),
@@ -54,6 +55,32 @@ function visitRow(data: ReturnType<typeof visitSchema.parse>) {
  * Makes visit_villages / visit_experiences match the chosen ids. An experience is
  * only kept if its village is also chosen. Returns an error message or null.
  */
+/** Makes the trip's facilitators exactly `ids`, in that order (first = main). */
+async function syncVisitFacilitators(
+  supabase: SupabaseServerClient,
+  visitId: string,
+  ids: string[],
+): Promise<string | null> {
+  const wanted = [...new Set(ids)];
+  const { error: deleteError } = wanted.length
+    ? await supabase
+        .from("visit_facilitators")
+        .delete()
+        .eq("visit_id", visitId)
+        .not("facilitator_id", "in", `(${wanted.join(",")})`)
+    : await supabase.from("visit_facilitators").delete().eq("visit_id", visitId);
+  if (deleteError) return "Could not save the facilitators.";
+  if (wanted.length) {
+    const { error } = await supabase
+      .from("visit_facilitators")
+      .upsert(wanted.map((facilitator_id, position) => ({ visit_id: visitId, facilitator_id, position })), {
+        onConflict: "visit_id,facilitator_id",
+      });
+    if (error) return "Could not save the facilitators.";
+  }
+  return null;
+}
+
 async function syncVisitLinks(
   supabase: SupabaseServerClient,
   visitId: string,
@@ -187,7 +214,9 @@ export async function createVisit(input: VisitInput): Promise<VisitActionResult 
     .single();
   if (error || !created) return { error: "Could not create the visit." };
 
-  const linkError = await syncVisitLinks(supabase, created.id, parsed.data.villageIds, parsed.data.experienceIds);
+  const linkError =
+    (await syncVisitLinks(supabase, created.id, parsed.data.villageIds, parsed.data.experienceIds)) ??
+    (await syncVisitFacilitators(supabase, created.id, parsed.data.facilitatorIds));
   if (linkError) {
     await supabase.from("visits").delete().eq("id", created.id);
     return { error: linkError };
@@ -235,6 +264,7 @@ export async function createVisit(input: VisitInput): Promise<VisitActionResult 
       sales: savedSales ?? [],
       invoices: [],
       taxInvoices: [],
+      facilitatorIds: [...new Set(parsed.data.facilitatorIds)],
       primaryGuest: null,
     },
   };
@@ -256,7 +286,9 @@ export async function updateVisit(id: string, input: VisitInput): Promise<VisitA
     .eq("id", id);
   if (error) return { error: "Could not update the visit." };
 
-  const linkError = await syncVisitLinks(supabase, id, parsed.data.villageIds, parsed.data.experienceIds);
+  const linkError =
+    (await syncVisitLinks(supabase, id, parsed.data.villageIds, parsed.data.experienceIds)) ??
+    (await syncVisitFacilitators(supabase, id, parsed.data.facilitatorIds));
   if (linkError) return { error: linkError };
   const salesError = await syncVisitSales(supabase, id, parsed.data.sales, email);
   if (salesError) return { error: salesError };

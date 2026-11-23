@@ -27,6 +27,8 @@ export type VisitListItem = VisitRow & {
   invoices: VisitInvoice[];
   /** Tax invoices issued once the client paid, newest first. */
   taxInvoices: VisitTaxInvoice[];
+  /** Every facilitator on the trip, main one first (visit_facilitators). */
+  facilitatorIds: string[];
   /** The guest marked as the visit's primary point of contact, shown in the trips grid. */
   primaryGuest: VisitPrimaryGuest | null;
 };
