@@ -53,7 +53,7 @@ const STEPS: { title: string; fields: (keyof VisitInput)[] }[] = [
   {
     title: "Visit details",
     fields: [
-      "programCategory",
+      "programCategories",
       "status",
       "visitDate",
       "endDate",
@@ -437,7 +437,9 @@ function VisitForm({
   const isEditing = visit !== null;
   const firstDay = visit?.visit_date ?? defaultDate;
 
-  const [programCategory, setProgramCategory] = useState<string>(visit?.program_category ?? "rural_experience");
+  const [programCategories, setProgramCategories] = useState<string[]>(
+    visit?.program_categories?.length ? visit.program_categories : visit?.program_category ? [visit.program_category] : [],
+  );
   const [status, setStatus] = useState<string>(visit?.status ?? "tentative");
   const [dates, setDates] = useState<{ start: CalendarDate; end: CalendarDate } | null>(() =>
     firstDay ? { start: parseDate(firstDay), end: parseDate(visit?.end_date ?? firstDay) } : null,
@@ -510,7 +512,7 @@ function VisitForm({
     formOptions.push({ id: feedbackFormId, label: "Unavailable form (unpublished or deleted)" });
   }
 
-  const isRuralExperience = programCategory === "rural_experience";
+  const isRuralExperience = programCategories.includes("rural_experience");
 
   function handleVillagesChange(next: string[]) {
     setVillageIds(next);
@@ -521,7 +523,7 @@ function VisitForm({
 
   function buildInput(): VisitInput {
     return {
-      programCategory: programCategory as VisitInput["programCategory"],
+      programCategories: programCategories as VisitInput["programCategories"],
       visitDate: dates?.start.toString() ?? "",
       endDate: dates?.end.toString() ?? "",
       startTime: fromTime(startTime),
@@ -637,14 +639,41 @@ function VisitForm({
 
         {step === 0 ? (
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-4 sm:col-span-2 sm:grid-cols-3">
-              <OptionSelect
-                isRequired
-                label="Program"
-                options={PROGRAM_CATEGORIES}
-                value={programCategory}
-                onChange={setProgramCategory}
-              />
+            <div className="flex flex-col gap-2 sm:col-span-2">
+              <span className="text-sm font-medium">
+                Program <span className="text-danger">*</span>
+                <span className="ml-2 text-xs font-normal text-muted">Click to select. Pick more than one if the trip covers several.</span>
+              </span>
+              <TagGroup
+                aria-label="Program"
+                selectedKeys={new Set(programCategories)}
+                selectionMode="multiple"
+                onSelectionChange={(keys) => {
+                  // Keep the order the programs were picked in; the first is the trip's main program.
+                  const next = keys === "all" ? PROGRAM_CATEGORIES.map((p) => p.id) : [...keys].map(String);
+                  setProgramCategories((prev) => [...prev.filter((id) => next.includes(id)), ...next.filter((id) => !prev.includes(id))]);
+                }}
+              >
+                <TagGroup.List className="flex flex-wrap gap-2">
+                  {PROGRAM_CATEGORIES.map((program) => {
+                    const selected = programCategories.includes(program.id);
+                    return (
+                      <Tag
+                        key={program.id}
+                        className="cursor-pointer px-3 py-1.5 text-sm"
+                        id={program.id}
+                        textValue={program.label}
+                      >
+                        {selected ? <Check className="size-3.5" /> : null}
+                        {program.label}
+                      </Tag>
+                    );
+                  })}
+                </TagGroup.List>
+              </TagGroup>
+            </div>
+
+            <div className="grid gap-4 sm:col-span-2 sm:grid-cols-2">
               <OptionSelect isRequired label="Status" options={VISIT_STATUSES} value={status} onChange={setStatus} />
               <TextField value={headcount} onChange={setHeadcount}>
                 <Label>Headcount</Label>

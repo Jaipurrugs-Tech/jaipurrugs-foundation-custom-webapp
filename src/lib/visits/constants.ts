@@ -13,8 +13,8 @@ export type VisitStatus = (typeof VISIT_STATUSES)[number]["id"];
 export type VisitStatusColor = (typeof VISIT_STATUSES)[number]["color"];
 
 /**
- * The program a visit belongs to. Its label is also stored as the visit's
- * `visit_type`, which is what message sequences are matched on.
+ * The programs a visit belongs to (one or more). Their labels, joined with " + ",
+ * are stored as the visit's `visit_type`; message sequences match any one of them.
  */
 export const PROGRAM_CATEGORIES = [
   { id: "rural_experience", label: "Rural Experience" },
@@ -93,6 +93,8 @@ function labelOf(list: readonly { id: string; label: string }[], id: string | nu
 
 export const visitStatusLabel = (id: string) => labelOf(VISIT_STATUSES, id);
 export const programLabel = (id: string) => labelOf(PROGRAM_CATEGORIES, id);
+/** ["industrial_visit", "village_field_visit"] -> "Industrial Visit + Village / Field Visit" */
+export const programsLabel = (ids: readonly string[]) => ids.map(programLabel).join(" + ");
 export const visitorCategoryLabel = (id: string | null) => labelOf(VISITOR_CATEGORIES, id);
 export const bookingChannelLabel = (id: string | null) => labelOf(BOOKING_CHANNELS, id);
 export const saleChannelLabel = (id: string) => labelOf(SALE_CHANNELS, id);

@@ -1858,6 +1858,7 @@ export type Database = {
           partner_id: string | null
           poc_name: string | null
           poc_phone: string | null
+          program_categories: string[]
           program_category: string
           source: string | null
           start_at: string | null
@@ -1890,6 +1891,7 @@ export type Database = {
           partner_id?: string | null
           poc_name?: string | null
           poc_phone?: string | null
+          program_categories?: string[]
           program_category?: string
           source?: string | null
           start_at?: string | null
@@ -1922,6 +1924,7 @@ export type Database = {
           partner_id?: string | null
           poc_name?: string | null
           poc_phone?: string | null
+          program_categories?: string[]
           program_category?: string
           source?: string | null
           start_at?: string | null

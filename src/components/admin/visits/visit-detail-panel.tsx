@@ -10,7 +10,7 @@ import {
   SALE_CHANNELS,
   VISIT_STATUSES,
   bookingChannelLabel,
-  programLabel,
+  programsLabel,
   visitorCategoryLabel,
   type VisitDetailView,
 } from "@/lib/visits/constants";
@@ -303,7 +303,7 @@ export function VisitDetailPanel({
     if (!visit) return null;
     return (
       <>
-        <span className="text-xs font-medium uppercase tracking-wide text-muted">{programLabel(visit.program_category)}</span>
+        <span className="text-xs font-medium uppercase tracking-wide text-muted">{programsLabel(visit.program_categories ?? [visit.program_category])}</span>
         {heading}
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
           <VisitStatusChip status={visit.status} />

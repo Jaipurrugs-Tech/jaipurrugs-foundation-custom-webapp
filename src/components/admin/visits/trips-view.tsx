@@ -215,7 +215,7 @@ export function TripsView({
     const to = dateRange?.end.toString();
     return visits.filter((v) => {
       if (status !== ALL && v.status !== status) return false;
-      if (program !== ALL && v.program_category !== program) return false;
+      if (program !== ALL && !(v.program_categories ?? [v.program_category]).includes(program)) return false;
       if (villageId !== ALL && !v.villageIds.includes(villageId)) return false;
       if (facilitatorId !== ALL && v.facilitator_id !== facilitatorId) return false;
       if (from && to) {

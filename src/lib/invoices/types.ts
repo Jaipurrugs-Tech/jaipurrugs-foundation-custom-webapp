@@ -41,7 +41,8 @@ export type InvoiceVisitOption = {
   label: string;
   visitDate: string | null;
   status: string;
-  programCategory: string;
+  /** All the trip's programs (the first is its main one). */
+  programCategories: string[];
   visitorCategory: string | null;
   headcount: number | null;
   source: string | null;

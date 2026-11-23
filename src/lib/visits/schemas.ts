@@ -152,7 +152,9 @@ export type SaleInput = z.input<typeof saleSchema>;
 
 export const visitSchema = z
   .object({
-    programCategory: z.enum(ids(PROGRAM_CATEGORIES), "Pick the program."),
+    programCategories: z
+      .array(z.enum(ids(PROGRAM_CATEGORIES), "Pick a program."), "Pick at least one program.")
+      .min(1, "Pick at least one program."),
     visitDate: requiredDate("Pick the visit dates."),
     // null for a single-day visit.
     endDate: optionalDate,
@@ -203,7 +205,7 @@ export const visitSchema = z
       }
       seen.add(key);
     }
-    if (visit.programCategory === "rural_experience" && !visit.bookingChannel) {
+    if (visit.programCategories.includes("rural_experience") && !visit.bookingChannel) {
       ctx.addIssue({ code: "custom", message: "Pick the booking channel for a Rural Experience visit.", path: ["bookingChannel"] });
     }
   });
