@@ -32,16 +32,19 @@ const optionalUuid = z.preprocess((v) => (blank(v) ? null : v), z.string().uuid(
 
 const mode = z.enum(ids(PAYMENT_MODES), "Choose how it was paid.");
 
-export const paymentSchema = z.object({
-  invoiceId: z.string().uuid("Choose the proforma invoice."),
-  paidOn: date("Enter the date the money was received."),
+/** A tax invoice issued in the accounting system once the client has paid for a trip. */
+export const taxInvoiceSchema = z.object({
+  visitId: z.string("Choose the trip.").uuid("Choose the trip."),
+  proformaInvoiceId: optionalUuid,
+  invoiceNumber: z.string().trim().min(1, "Enter the tax invoice number.").max(100),
+  invoiceDate: date("Enter the tax invoice date."),
   amount,
   mode,
   reference: optionalText(200),
   notes: optionalText(2000),
 });
 
-export type PaymentInput = z.input<typeof paymentSchema>;
+export type TaxInvoiceInput = z.input<typeof taxInvoiceSchema>;
 
 export const payoutSchema = z.object({
   visitId: optionalUuid,

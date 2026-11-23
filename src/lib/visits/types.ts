@@ -10,6 +10,12 @@ export type VisitInvoice = Pick<
   "id" | "pi_number" | "pi_date" | "status" | "taxable_total" | "grand_total"
 >;
 
+/** A tax invoice recorded for a visit (Finance → Invoices): what the client has paid. */
+export type VisitTaxInvoice = Pick<
+  Tables<"tax_invoices">,
+  "id" | "invoice_number" | "invoice_date" | "amount" | "pdf_path"
+>;
+
 /** A visit with the relations the list and calendar views need. */
 export type VisitListItem = VisitRow & {
   villageIds: string[];
@@ -19,6 +25,8 @@ export type VisitListItem = VisitRow & {
   sales: VisitSale[];
   /** Proforma invoices raised for the visit (its charges are managed there). */
   invoices: VisitInvoice[];
+  /** Tax invoices issued once the client paid, newest first. */
+  taxInvoices: VisitTaxInvoice[];
   /** The guest marked as the visit's primary point of contact, shown in the trips grid. */
   primaryGuest: VisitPrimaryGuest | null;
 };

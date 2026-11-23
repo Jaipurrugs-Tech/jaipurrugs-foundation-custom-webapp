@@ -57,7 +57,7 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
     label: "Finance",
     items: [
       { href: "/finance", label: "Overview", icon: ChartColumn, exact: true },
-      { href: "/finance/payments", label: "Payments received", icon: CreditCard },
+      { href: "/finance/invoices", label: "Invoices", icon: CreditCard },
       { href: "/finance/payouts", label: "Artisan payouts", icon: HandOk },
       { href: "/finance/expenses", label: "Expenses", icon: Wallet },
       { href: "/services", label: "Services", icon: TagDollar },
