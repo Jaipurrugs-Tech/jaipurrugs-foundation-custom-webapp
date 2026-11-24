@@ -8,7 +8,6 @@ const TABS = [
   { key: "submissions", label: "Submissions", path: "submissions" },
   { key: "edit", label: "Edit", path: "edit" },
   { key: "leads", label: "Lead sync", path: "leads" },
-  { key: "insights", label: "AI Insights", path: "insights" },
 ] as const;
 
 export function FormNavTabs({ formId }: { formId: string }) {

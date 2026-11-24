@@ -18,8 +18,8 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link className="text-sm text-muted hover:text-foreground" href="/invoices">
-          ← Proforma invoices
+        <Link className="text-sm text-muted hover:text-foreground" href={visitId ? `/trips?visit=${visitId}` : "/invoices"}>
+          {visitId ? "← Back to trip" : "← Proforma invoices"}
         </Link>
         <h1 className="text-xl font-semibold">New proforma invoice</h1>
       </div>
