@@ -7,12 +7,13 @@ import {
   Archive,
   ArrowRotateLeft,
   Copy,
+  CopyPlus,
   EllipsisVertical,
   FileText,
   Pencil,
 } from "@gravity-ui/icons";
 import { Button, Chip, Dropdown, Table, toast } from "@heroui/react";
-import { archiveForm, unarchiveForm } from "@/lib/actions/forms";
+import { archiveForm, duplicateForm, unarchiveForm } from "@/lib/actions/forms";
 import type { Tables } from "@/lib/types/supabase";
 
 export type FormRow = Pick<
@@ -67,6 +68,20 @@ export function FormsTable({ forms }: { forms: FormRow[] }) {
       const path = form.slug ? `/f/${form.slug}` : `/f/${form.share_token}`;
       navigator.clipboard.writeText(`${origin}${path}`);
       toast.success("Public form link copied to clipboard");
+    } else if (actionKey === "duplicate") {
+      startTransition(async () => {
+        try {
+          const result = await duplicateForm(form.id);
+          if (result.error || !result.id) {
+            toast.danger(result.error ?? "Could not duplicate the form.");
+            return;
+          }
+          toast.success(`"${form.title || "Form"}" duplicated as a draft`);
+          router.push(`/forms/${result.id}/edit`);
+        } catch {
+          toast.danger("Could not duplicate the form.");
+        }
+      });
     } else if (actionKey === "archive") {
       startTransition(async () => {
         try {
@@ -152,6 +167,12 @@ export function FormsTable({ forms }: { forms: FormRow[] }) {
                           <span className="inline-flex items-center gap-2">
                             <Copy className="size-3.5 text-muted" />
                             Copy public link
+                          </span>
+                        </Dropdown.Item>
+                        <Dropdown.Item id="duplicate" textValue="Duplicate form">
+                          <span className="inline-flex items-center gap-2">
+                            <CopyPlus className="size-3.5 text-muted" />
+                            Duplicate form
                           </span>
                         </Dropdown.Item>
                         {form.status === "archived" ? (

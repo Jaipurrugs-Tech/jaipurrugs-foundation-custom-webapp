@@ -13,7 +13,9 @@ import {
 import { formatDate } from "@/lib/visits/time";
 import { StatCard } from "../visits/stat-card";
 import { IncomeBarChart, MonthlyAreaChart, RankedBarChart } from "./charts";
+import type { DashboardAttention } from "@/lib/dashboard/attention";
 import { DashboardFilters } from "./dashboard-filters";
+import { NeedsAttention } from "./needs-attention";
 
 function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -114,18 +116,21 @@ function CategoryTable({ rows }: { rows: CategoryRevenueRow[] }) {
 }
 
 export function DashboardView({
+  attention,
   stats,
   revenue,
   filters,
   villages,
 }: {
+  /** Null when the attention panel could not be loaded. */
+  attention: DashboardAttention | null;
   stats: DashboardStats;
   /** Null when the revenue numbers could not be loaded. */
   revenue: RevenueStats | null;
   filters: Filters;
   villages: { id: string; name: string }[];
 }) {
-  const { operations, reach, economic, innovation } = stats;
+  const { operations, reach, economic, quality, innovation } = stats;
   const programName = filters.program === ALL_PROGRAMS ? "" : `${programLabel(filters.program)} `;
   const hasAnyData = reach.visits > 0 || operations.upcoming_visits > 0 || operations.completed_in_range > 0;
 
@@ -142,6 +147,8 @@ export function DashboardView({
         <DashboardFilters filters={filters} villages={villages} />
       </div>
 
+      {attention ? <NeedsAttention attention={attention} /> : null}
+
       {!hasAnyData ? (
         <div className="rounded-2xl border border-dashed border-border p-6 text-sm text-muted">
           No visits match this period and these filters yet. Add visits on <Link className="text-accent" href="/trips">Trips</Link> and mark
@@ -150,9 +157,18 @@ export function DashboardView({
       ) : null}
 
       <Section title="Operations" description="What needs attention now.">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
           <StatCard label="Upcoming visits" value={operations.upcoming_visits} hint={`${operations.upcoming_guests} guests`} />
           <StatCard label="Completed" value={operations.completed_in_range} hint="in period" />
+          {quality.avg_rating === null || quality.feedback_count === 0 ? (
+            <StatCard label="Guest satisfaction" value="—" hint="No feedback yet" />
+          ) : (
+            <StatCard
+              label="Guest satisfaction"
+              value={`${quality.avg_rating.toFixed(1)} / 5`}
+              hint={`${quality.feedback_count} response${quality.feedback_count === 1 ? "" : "s"}`}
+            />
+          )}
         </div>
       </Section>
 

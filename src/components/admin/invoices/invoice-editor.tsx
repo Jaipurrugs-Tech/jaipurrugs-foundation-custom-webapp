@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRotateLeft, Plus, TrashBin } from "@gravity-ui/icons";
@@ -328,6 +328,64 @@ function SmallField({
 // Editor
 // ---------------------------------------------------------------------------
 
+const UNSAVED_MESSAGE = "You have unsaved changes to this proforma invoice. Leave without saving?";
+
+/**
+ * Warns before the page is closed or reloaded, and before an in-app link is followed,
+ * while there are unsaved changes. (The browser's Back button within the app isn't
+ * intercepted.) Returns a function that lets a deliberate navigation, such as the
+ * redirect after a save, skip the prompt.
+ */
+function useUnsavedChangesWarning(active: boolean): () => void {
+  const activeRef = useRef(active);
+  const allowedRef = useRef(false);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+
+  useEffect(() => {
+    const shouldWarn = () => activeRef.current && !allowedRef.current;
+
+    function onBeforeUnload(event: BeforeUnloadEvent) {
+      if (!shouldWarn()) return;
+      event.preventDefault();
+      // Older browsers need returnValue set to show the prompt.
+      event.returnValue = "";
+    }
+
+    // Capture phase on the document runs before Next's <Link> handler; preventing the
+    // default there stops the client-side navigation.
+    function onClick(event: MouseEvent) {
+      if (!shouldWarn() || event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = (event.target as Element | null)?.closest?.("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      if (anchor.target && anchor.target !== "_self") return;
+      if (anchor.hasAttribute("download")) return;
+      const url = new URL(anchor.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+      if (window.confirm(UNSAVED_MESSAGE)) {
+        allowedRef.current = true;
+      } else {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, []);
+
+  return () => {
+    allowedRef.current = true;
+  };
+}
+
 export function InvoiceEditor({
   invoice,
   services,
@@ -458,6 +516,10 @@ export function InvoiceEditor({
 
   const snapshot = JSON.stringify(buildInput());
   const isDirty = invoice ? snapshot !== (savedSnapshot ?? initialSnapshotOf(invoice)) : true;
+  // A new invoice only counts as changed once something differs from how the editor opened.
+  const [pristineSnapshot] = useState(snapshot);
+  const hasUnsavedChanges = invoice ? isDirty : snapshot !== pristineSnapshot;
+  const allowNavigation = useUnsavedChangesWarning(hasUnsavedChanges);
 
   function updateLine(key: string, change: (line: LineDraft) => LineDraft) {
     setLines((prev) => prev.map((l) => (l.key === key ? change(l) : l)));
@@ -532,11 +594,20 @@ export function InvoiceEditor({
       setError(result.error ?? "Could not save.");
       return;
     }
-    toast.success(invoice ? "Proforma invoice saved." : "Proforma invoice created.");
     if (!invoice) {
-      router.replace(`/invoices/${result.id}`);
+      allowNavigation();
+      // Opened from a trip ("/invoices/new?visit=…"): go back to that trip once the PI exists.
+      const tripId = initialVisitId ? visitId || initialVisitId : null;
+      if (tripId) {
+        toast.success("Proforma invoice created. Back to the trip.");
+        router.push(`/trips?visit=${tripId}`);
+      } else {
+        toast.success("Proforma invoice created.");
+        router.replace(`/invoices/${result.id}`);
+      }
       return;
     }
+    toast.success("Proforma invoice saved.");
     setSavedSnapshot(JSON.stringify(input));
     router.refresh();
   }
