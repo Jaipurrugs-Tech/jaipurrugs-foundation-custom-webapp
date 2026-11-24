@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.15"
   }
   public: {
     Tables: {
@@ -75,6 +75,135 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      artisan_payouts: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: string
+          mode: string
+          notes: string | null
+          paid_on: string
+          payee: string
+          reference: string | null
+          updated_at: string
+          village_id: string | null
+          visit_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mode?: string
+          notes?: string | null
+          paid_on?: string
+          payee: string
+          reference?: string | null
+          updated_at?: string
+          village_id?: string | null
+          visit_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mode?: string
+          notes?: string | null
+          paid_on?: string
+          payee?: string
+          reference?: string | null
+          updated_at?: string
+          village_id?: string | null
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "artisan_payouts_village_id_fkey"
+            columns: ["village_id"]
+            isOneToOne: false
+            referencedRelation: "villages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "artisan_payouts_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string
+          expense_date: string
+          id: string
+          mode: string
+          notes: string | null
+          paid_to: string | null
+          receipt_path: string | null
+          reference: string | null
+          updated_at: string
+          village_id: string | null
+          visit_id: string | null
+        }
+        Insert: {
+          amount: number
+          category: string
+          created_at?: string
+          created_by?: string | null
+          description: string
+          expense_date?: string
+          id?: string
+          mode?: string
+          notes?: string | null
+          paid_to?: string | null
+          receipt_path?: string | null
+          reference?: string | null
+          updated_at?: string
+          village_id?: string | null
+          visit_id?: string | null
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          expense_date?: string
+          id?: string
+          mode?: string
+          notes?: string | null
+          paid_to?: string | null
+          receipt_path?: string | null
+          reference?: string | null
+          updated_at?: string
+          village_id?: string | null
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_village_id_fkey"
+            columns: ["village_id"]
+            isOneToOne: false
+            referencedRelation: "villages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       experiences: {
         Row: {
@@ -453,135 +582,6 @@ export type Database = {
           updated_by?: string | null
         }
         Relationships: []
-      }
-      artisan_payouts: {
-        Row: {
-          amount: number
-          created_at: string
-          created_by: string | null
-          id: string
-          mode: string
-          notes: string | null
-          paid_on: string
-          payee: string
-          reference: string | null
-          updated_at: string
-          village_id: string | null
-          visit_id: string | null
-        }
-        Insert: {
-          amount: number
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          mode?: string
-          notes?: string | null
-          paid_on?: string
-          payee: string
-          reference?: string | null
-          updated_at?: string
-          village_id?: string | null
-          visit_id?: string | null
-        }
-        Update: {
-          amount?: number
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          mode?: string
-          notes?: string | null
-          paid_on?: string
-          payee?: string
-          reference?: string | null
-          updated_at?: string
-          village_id?: string | null
-          visit_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "artisan_payouts_village_id_fkey"
-            columns: ["village_id"]
-            isOneToOne: false
-            referencedRelation: "villages"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "artisan_payouts_visit_id_fkey"
-            columns: ["visit_id"]
-            isOneToOne: false
-            referencedRelation: "visits"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      expenses: {
-        Row: {
-          amount: number
-          category: string
-          created_at: string
-          created_by: string | null
-          description: string
-          expense_date: string
-          id: string
-          mode: string
-          notes: string | null
-          paid_to: string | null
-          receipt_path: string | null
-          reference: string | null
-          updated_at: string
-          village_id: string | null
-          visit_id: string | null
-        }
-        Insert: {
-          amount: number
-          category: string
-          created_at?: string
-          created_by?: string | null
-          description: string
-          expense_date?: string
-          id?: string
-          mode?: string
-          notes?: string | null
-          paid_to?: string | null
-          receipt_path?: string | null
-          reference?: string | null
-          updated_at?: string
-          village_id?: string | null
-          visit_id?: string | null
-        }
-        Update: {
-          amount?: number
-          category?: string
-          created_at?: string
-          created_by?: string | null
-          description?: string
-          expense_date?: string
-          id?: string
-          mode?: string
-          notes?: string | null
-          paid_to?: string | null
-          receipt_path?: string | null
-          reference?: string | null
-          updated_at?: string
-          village_id?: string | null
-          visit_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "expenses_village_id_fkey"
-            columns: ["village_id"]
-            isOneToOne: false
-            referencedRelation: "villages"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "expenses_visit_id_fkey"
-            columns: ["visit_id"]
-            isOneToOne: false
-            referencedRelation: "visits"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       invoice_settings: {
         Row: {
@@ -1621,6 +1621,42 @@ export type Database = {
           },
         ]
       }
+      visit_facilitators: {
+        Row: {
+          created_at: string
+          facilitator_id: string
+          position: number
+          visit_id: string
+        }
+        Insert: {
+          created_at?: string
+          facilitator_id: string
+          position?: number
+          visit_id: string
+        }
+        Update: {
+          created_at?: string
+          facilitator_id?: string
+          position?: number
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visit_facilitators_facilitator_id_fkey"
+            columns: ["facilitator_id"]
+            isOneToOne: false
+            referencedRelation: "facilitators"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_facilitators_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       visit_guests: {
         Row: {
           created_at: string
@@ -1725,42 +1761,6 @@ export type Database = {
           },
           {
             foreignKeyName: "visit_message_rules_visit_id_fkey"
-            columns: ["visit_id"]
-            isOneToOne: false
-            referencedRelation: "visits"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      visit_facilitators: {
-        Row: {
-          created_at: string
-          facilitator_id: string
-          position: number
-          visit_id: string
-        }
-        Insert: {
-          created_at?: string
-          facilitator_id: string
-          position?: number
-          visit_id: string
-        }
-        Update: {
-          created_at?: string
-          facilitator_id?: string
-          position?: number
-          visit_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "visit_facilitators_facilitator_id_fkey"
-            columns: ["facilitator_id"]
-            isOneToOne: false
-            referencedRelation: "facilitators"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "visit_facilitators_visit_id_fkey"
             columns: ["visit_id"]
             isOneToOne: false
             referencedRelation: "visits"
@@ -1933,7 +1933,7 @@ export type Database = {
           partner_id?: string | null
           poc_name?: string | null
           poc_phone?: string | null
-          program_categories?: string[]
+          program_categories: string[]
           program_category?: string
           source?: string | null
           start_at?: string | null
@@ -2195,7 +2195,12 @@ export type Database = {
     }
     Functions: {
       add_openai_api_key: {
-        Args: { p_created_by: string; p_key: string; p_label: string; p_make_active: boolean }
+        Args: {
+          p_created_by: string
+          p_key: string
+          p_label: string
+          p_make_active: boolean
+        }
         Returns: string
       }
       agent_submissions_for_phone: {
@@ -2221,16 +2226,16 @@ export type Database = {
       agent_visits_for_phone: {
         Args: { p_limit?: number; p_phone: string; p_scope?: string }
         Returns: {
-          end_time: string | null
+          end_time: string
           experience_names: string[]
-          facilitator: string | null
+          facilitator: string
           guest_status: string
-          poc_name: string | null
-          poc_phone: string | null
-          start_time: string | null
+          poc_name: string
+          poc_phone: string
+          start_time: string
           status: string
           village_names: string[]
-          visit_date: string | null
+          visit_date: string
           visit_id: string
           visit_type: string
         }[]
@@ -2259,6 +2264,12 @@ export type Database = {
           visit_id: string
           zernio_conversation_id: string | null
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "scheduled_whatsapp_sends"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       dashboard_feedback_stats: {
         Args: {
@@ -2294,7 +2305,10 @@ export type Database = {
         Returns: Json
       }
       delete_openai_api_key: { Args: { p_id: string }; Returns: undefined }
-      feedback_save: { Args: { p_answers: Json; p_complete?: boolean; p_token: string }; Returns: Json }
+      feedback_save: {
+        Args: { p_answers: Json; p_complete?: boolean; p_token: string }
+        Returns: Json
+      }
       feedback_session: { Args: { p_token: string }; Returns: Json }
       get_active_openai_api_key: { Args: never; Returns: string }
       get_openai_api_key: { Args: { p_id: string }; Returns: string }
@@ -2317,13 +2331,17 @@ export type Database = {
         Args: { p_invoice_id: string }
         Returns: undefined
       }
+      proforma_invoice_sync_paid_status: {
+        Args: { p_invoice_id: string }
+        Returns: undefined
+      }
       save_proforma_invoice: {
-        Args: { p_id: string | null; p_invoice: Json; p_items: Json }
+        Args: { p_id: string; p_invoice: Json; p_items: Json }
         Returns: string
       }
       save_service: {
         Args: {
-          p_id: string | null
+          p_id: string
           p_service: Json
           p_slabs: Json
           p_village_ids: string[]
@@ -2343,10 +2361,7 @@ export type Database = {
       }
       set_active_openai_api_key: { Args: { p_id: string }; Returns: undefined }
       sync_form_leads: { Args: { p_form_id: string }; Returns: number }
-      sync_visit_charges: {
-        Args: { p_visit_id: string }
-        Returns: undefined
-      }
+      sync_visit_charges: { Args: { p_visit_id: string }; Returns: undefined }
     }
     Enums: {
       form_field_type:
