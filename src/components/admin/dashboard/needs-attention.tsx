@@ -46,7 +46,7 @@ export function NeedsAttention({ attention }: { attention: DashboardAttention })
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">Needs attention</h2>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-[repeat(auto-fit,minmax(18rem,1fr))]">
         {upcomingTrips.length > 0 ? (
           <AttentionCard
             href="/trips"
