@@ -100,7 +100,7 @@ function MessagingBody({
     if (!sequence) return;
     const result = await applyRuleSetToVisit(visit.id, sequence);
     if (await after(result)) {
-      toast.success(result.added ? `${result.added} message${result.added === 1 ? "" : "s"} added` : "Those messages were already on this visit");
+      toast.success(result.added ? `${result.added} message${result.added === 1 ? "" : "s"} added` : "Those messages were already on this trip");
       setSequence(null);
     }
   }
@@ -126,14 +126,14 @@ function MessagingBody({
 
       {needsCompletion ? (
         <p className="text-sm text-muted">
-          After-visit messages start when this visit is marked <strong>completed</strong>
+          After-trip messages start when this trip is marked <strong>completed</strong>
           {visit.visit_date ? ` (it is currently ${visit.status.replace("_", " ")})` : ""}.
         </p>
       ) : null}
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold">Messages for this visit</h3>
+          <h3 className="text-sm font-semibold">Messages for this trip</h3>
           <Button size="sm" variant="secondary" onPress={() => setEditing("new")}>
             <Plus className="size-4" />
             Add message
@@ -237,8 +237,8 @@ function MessagingBody({
         <h3 className="text-sm font-semibold">Scheduled sends</h3>
         {sends.length === 0 ? (
           <p className="text-sm text-muted">
-            Nothing scheduled yet. Sends appear here once the visit has guests and its messages are due to be worked out
-            (after-visit messages wait for completion).
+            Nothing scheduled yet. Sends appear here once the trip has guests and its messages are due to be worked out
+            (after-trip messages wait for completion).
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-border/60 rounded-2xl border border-border/70">

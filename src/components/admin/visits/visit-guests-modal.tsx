@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CircleCheck, Comment, Copy, Plus, Star, StarFill, TrashBin, Xmark } from "@gravity-ui/icons";
 import {
+  AlertDialog,
   Button,
   Chip,
   Input,
@@ -123,12 +124,12 @@ function LeadMatchList({
                 </Chip>
                 {lead.visitCount > 0 ? (
                   <Chip size="sm" variant="soft">
-                    {lead.visitCount} visit{lead.visitCount === 1 ? "" : "s"}
+                    {lead.visitCount} trip{lead.visitCount === 1 ? "" : "s"}
                   </Chip>
                 ) : null}
                 {lead.onVisit ? (
                   <Chip color="warning" size="sm" variant="soft">
-                    Already on this visit
+                    Already on this trip
                   </Chip>
                 ) : null}
                 {lead.codeMismatch ? (
@@ -375,6 +376,9 @@ function GuestsBody({
 }) {
   const router = useRouter();
   const [isAddOpen, setIsAddOpen] = useState(justCreated);
+  // The guest whose remove button was pressed, waiting for confirmation.
+  const [removing, setRemoving] = useState<VisitGuestItem | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
 
   async function afterChange(result: { error?: string }) {
     if (result.error) {
@@ -396,6 +400,14 @@ function GuestsBody({
     }
   }
 
+  async function confirmRemove() {
+    if (!removing) return;
+    setIsRemoving(true);
+    const removed = await afterChange(await removeGuest(removing.id));
+    setIsRemoving(false);
+    if (removed) setRemoving(null);
+  }
+
   async function changePrimary(guest: VisitGuestItem) {
     if (await afterChange(await setPrimaryGuest(visit.id, guest.id))) {
       toast.success(`${guest.name ?? "Contact"} is now the primary POC`);
@@ -409,9 +421,9 @@ function GuestsBody({
     <div className="flex flex-col gap-4">
       {justCreated ? (
         <div className="rounded-2xl bg-success/10 px-4 py-3 text-sm">
-          <p className="font-medium text-success">Visit added.</p>
+          <p className="font-medium text-success">Trip added.</p>
           <p className="text-muted">
-            Add the guest list now, or skip and add guests later from the Guests button on the visit.
+            Add the guest list now, or skip and add guests later from the Guests button on the trip.
           </p>
         </div>
       ) : null}
@@ -423,7 +435,7 @@ function GuestsBody({
             <span className="font-normal text-muted"> · headcount {visit.headcount ?? "not set"}</span>
           </p>
           <p className="text-xs text-muted">
-            Guests marked invited or attended get the after-visit WhatsApp messages.
+            Guests marked invited or attended get the after-trip WhatsApp messages.
           </p>
         </div>
         {!isAddOpen ? (
@@ -474,8 +486,8 @@ function GuestsBody({
           </Select>
           <p className="min-w-0 flex-1 text-xs text-muted">
             {primaryGuest
-              ? "The contact shown for this visit on Trips. Pick another guest to replace them."
-              : "No primary POC yet — pick the guest who is the main contact for this visit."}
+              ? "The contact shown for this trip on Trips. Pick another guest to replace them."
+              : "No primary POC yet — pick the guest who is the main contact for this trip."}
           </p>
         </div>
       ) : null}
@@ -499,7 +511,7 @@ function GuestsBody({
                     "Loading guests…"
                   ) : (
                     <>
-                      <span>No guests yet. Add them so they receive messages about this visit.</span>
+                      <span>No guests yet. Add them so they receive messages about this trip.</span>
                       {!isAddOpen ? (
                         <Button size="sm" variant="secondary" onPress={() => setIsAddOpen(true)}>
                           <Plus className="size-4" />
@@ -606,7 +618,7 @@ function GuestsBody({
                       aria-label={`Remove ${guest.name ?? guest.phone}`}
                       size="sm"
                       variant="ghost"
-                      onPress={async () => afterChange(await removeGuest(guest.id))}
+                      onPress={() => setRemoving(guest)}
                     >
                       <TrashBin className="size-4 text-danger" />
                     </Button>
@@ -617,6 +629,31 @@ function GuestsBody({
           </Table.Content>
         </Table.ScrollContainer>
       </Table>
+
+      <AlertDialog isOpen={removing !== null} onOpenChange={(open) => !open && !isRemoving && setRemoving(null)}>
+        <AlertDialog.Backdrop>
+          <AlertDialog.Container>
+            <AlertDialog.Dialog className="sm:max-w-[400px]">
+              <AlertDialog.CloseTrigger />
+              <AlertDialog.Header>
+                <AlertDialog.Icon status="danger" />
+                <AlertDialog.Heading>Remove {removing?.name ?? (removing ? formatPhone(removing.phone) : "guest")}?</AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>
+                <p>They are taken off this trip&apos;s guest list. The contact itself stays in Leads.</p>
+              </AlertDialog.Body>
+              <AlertDialog.Footer>
+                <Button slot="close" variant="tertiary">
+                  Cancel
+                </Button>
+                <Button isPending={isRemoving} variant="danger" onPress={confirmRemove}>
+                  Remove guest
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      </AlertDialog>
     </div>
   );
 }

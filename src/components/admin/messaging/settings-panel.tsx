@@ -71,7 +71,7 @@ export function SettingsPanel({ settings }: { settings: VisitSettingsRow }) {
           </Switch.Content>
         </Switch>
         <Description className="-mt-2">
-          Use this to check the schedule and the filled-in values on a visit before any guest is messaged. Turn it off to send for real.
+          Use this to check the schedule and the filled-in values on a trip before any guest is messaged. Turn it off to send for real.
         </Description>
       </section>
 
@@ -93,9 +93,9 @@ export function SettingsPanel({ settings }: { settings: VisitSettingsRow }) {
         <Description className="-mt-2">Nothing is sent in this window; messages due then wait until it ends.</Description>
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField value={autoComplete} onChange={setAutoComplete}>
-            <Label>Auto-complete a visit after (hours)</Label>
+            <Label>Auto-complete a trip after (hours)</Label>
             <Input min={0} type="number" />
-            <Description>If nobody marks a confirmed visit completed, it is completed this many hours after it ends, so the thank-you isn&apos;t skipped.</Description>
+            <Description>If nobody marks a confirmed trip completed, it is completed this many hours after it ends, so the thank-you isn&apos;t skipped.</Description>
           </TextField>
           <TextField value={expiryDays} onChange={setExpiryDays}>
             <Label>Drop an unsent message after (days)</Label>
@@ -121,7 +121,7 @@ export function SettingsPanel({ settings }: { settings: VisitSettingsRow }) {
               <AlertDialog.Body>
                 <p>
                   Guests will receive the scheduled WhatsApp messages from now on, including any recorded during a dry run
-                  that haven&apos;t expired yet. Make sure the templates are approved and a dry run on a real visit looked right.
+                  that haven&apos;t expired yet. Make sure the templates are approved and a dry run on a real trip looked right.
                 </p>
               </AlertDialog.Body>
               <AlertDialog.Footer>
