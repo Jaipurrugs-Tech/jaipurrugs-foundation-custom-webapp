@@ -1,7 +1,7 @@
 import { DashboardView } from "@/components/admin/dashboard/dashboard-view";
 import { requireActiveTeamMember } from "@/lib/auth/session";
 import { loadDashboardAttention } from "@/lib/dashboard/attention";
-import { loadDashboardNps } from "@/lib/dashboard/nps";
+import { loadReviewRating } from "@/lib/dashboard/review-rating";
 import { createClient } from "@/lib/supabase/server";
 import {
   dashboardRpcArgs,
@@ -19,14 +19,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const args = dashboardRpcArgs(filters);
   const supabase = await createClient();
 
-  const [{ data, error }, { data: feedback }, { data: villages }, { data: revenue }, attention, nps] = await Promise.all([
+  const [{ data, error }, { data: feedback }, { data: villages }, { data: revenue }, attention, reviewRating] = await Promise.all([
     supabase.rpc("dashboard_stats", args),
     supabase.rpc("dashboard_feedback_stats", args),
     supabase.from("villages").select("id, name").order("name"),
     supabase.rpc("dashboard_revenue_stats", args),
     // The attention panel is a nice-to-have: if it fails, the rest of the dashboard still renders.
     loadDashboardAttention(supabase).catch(() => null),
-    loadDashboardNps(supabase, filters).catch(() => null),
+    loadReviewRating(supabase).catch(() => null),
   ]);
   const stats = error ? null : parseDashboardStats(data, feedback);
 
@@ -43,7 +43,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     <DashboardView
       attention={attention}
       filters={filters}
-      nps={nps}
+      reviewRating={reviewRating}
       revenue={parseRevenueStats(revenue)}
       stats={stats}
       villages={villages ?? []}

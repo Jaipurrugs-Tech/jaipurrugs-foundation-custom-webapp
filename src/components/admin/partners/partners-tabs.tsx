@@ -2,9 +2,17 @@
 
 import { Tabs } from "@heroui/react";
 
-export function PartnersTabs({ partners, reviews }: { partners: React.ReactNode; reviews: React.ReactNode }) {
+export function PartnersTabs({
+  partners,
+  reviews,
+  defaultTab = "partners",
+}: {
+  partners: React.ReactNode;
+  reviews: React.ReactNode;
+  defaultTab?: "partners" | "reviews";
+}) {
   return (
-    <Tabs variant="secondary" defaultSelectedKey="partners">
+    <Tabs variant="secondary" defaultSelectedKey={defaultTab}>
       <Tabs.ListContainer>
         <Tabs.List aria-label="Partners and reviews">
           <Tabs.Tab id="partners">

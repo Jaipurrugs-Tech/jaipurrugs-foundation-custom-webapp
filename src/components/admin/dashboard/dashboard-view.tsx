@@ -16,7 +16,7 @@ import { IncomeBarChart, MonthlyAreaChart, RankedBarChart } from "./charts";
 import type { DashboardAttention } from "@/lib/dashboard/attention";
 import { DashboardFilters } from "./dashboard-filters";
 import { NeedsAttention } from "./needs-attention";
-import { formatNps, type NpsResult } from "@/lib/dashboard/nps-score";
+import type { ReviewRating } from "@/lib/dashboard/review-rating";
 
 /** Equal-width tile columns; on wide screens Operations (4) and Reach (3) share one row, so 7 tiles fill it. */
 const TILE_GRID = "grid grid-cols-2 gap-3";
@@ -56,11 +56,19 @@ function ChartCard({
 }
 
 
-function NpsCard({ nps }: { nps: NpsResult | null }) {
-  if (!nps) return <StatCard compact label="NPS" value="—" hint="Could not be loaded" />;
-  if (nps.score === null) return <StatCard compact label="NPS" value="—" hint="No ratings in period" />;
-  const hint = `${nps.responses} rating${nps.responses === 1 ? "" : "s"} · ${nps.promoters} promoter${nps.promoters === 1 ? "" : "s"}, ${nps.detractors} detractor${nps.detractors === 1 ? "" : "s"}`;
-  return <StatCard compact label="NPS" value={formatNps(nps.score)} hint={hint} />;
+function NpsCard({ rating }: { rating: ReviewRating | null }) {
+  const href = "/partners?tab=reviews";
+  if (!rating) return <StatCard compact href={href} label="NPS" value="—" hint="Could not be loaded" />;
+  if (rating.average === null) return <StatCard compact href={href} label="NPS" value="—" hint="No reviews yet" />;
+  return (
+    <StatCard
+      compact
+      href={href}
+      label="NPS"
+      value={`${rating.average.toFixed(1)} / 5`}
+      hint={`★ avg of ${rating.rated} review${rating.rated === 1 ? "" : "s"}`}
+    />
+  );
 }
 
 /** Turns stored ids into display labels on the server, before the data reaches a client chart. */
@@ -132,7 +140,7 @@ export function DashboardView({
   revenue,
   filters,
   villages,
-  nps,
+  reviewRating,
 }: {
   /** Null when the attention panel could not be loaded. */
   attention: DashboardAttention | null;
@@ -141,8 +149,8 @@ export function DashboardView({
   revenue: RevenueStats | null;
   filters: Filters;
   villages: { id: string; name: string }[];
-  /** Null when the NPS could not be loaded. */
-  nps: NpsResult | null;
+  /** Null when the review rating could not be loaded. */
+  reviewRating: ReviewRating | null;
 }) {
   const { operations, reach, economic, quality, innovation } = stats;
   const programName = filters.program === ALL_PROGRAMS ? "" : `${programLabel(filters.program)} `;
@@ -173,28 +181,30 @@ export function DashboardView({
       <div className="grid gap-8 xl:grid-cols-[4fr_3fr] xl:gap-3">
       <Section title="Operations" description="What needs attention now.">
         <div className={`${TILE_GRID} sm:grid-cols-4`}>
-          <StatCard compact label="Upcoming visits" value={operations.upcoming_visits} hint={`${operations.upcoming_guests} guests`} />
-          <StatCard compact label="Completed" value={operations.completed_in_range} hint="in period" />
+          <StatCard compact href="/trips?view=calendar" label="Upcoming visits" value={operations.upcoming_visits} hint={`${operations.upcoming_guests} guests`} />
+          <StatCard compact href="/trips?view=grid" label="Completed" value={operations.completed_in_range} hint="in period" />
           {quality.avg_rating === null || quality.feedback_count === 0 ? (
-            <StatCard compact label="Guest satisfaction" value="—" hint="No feedback yet" />
+            <StatCard compact href="/forms" label="Guest satisfaction" value="—" hint="No feedback yet" />
           ) : (
             <StatCard
               compact
+              href="/forms"
               label="Guest satisfaction"
               value={`${quality.avg_rating.toFixed(1)} / 5`}
               hint={`${quality.feedback_count} response${quality.feedback_count === 1 ? "" : "s"}`}
             />
           )}
-          <NpsCard nps={nps} />
+          <NpsCard rating={reviewRating} />
         </div>
       </Section>
 
       <Section title="Reach & economic value" description="Completed visits in the period.">
         <div className={`${TILE_GRID} sm:grid-cols-3`}>
-          <StatCard compact label="Visitors" value={reach.visitors} hint={`${reach.visits} visits`} />
-          <StatCard compact label="Total income" value={formatInr(economic.total_income)} hint="tax invoices incl. GST, else PIs" />
+          <StatCard compact href="/trips?view=grid" label="Visitors" value={reach.visitors} hint={`${reach.visits} visits`} />
+          <StatCard compact href={`/finance?from=${filters.from}&to=${filters.to}`} label="Total income" value={formatInr(economic.total_income)} hint="tax invoices incl. GST, else PIs" />
           <StatCard
             compact
+            href="/finance/payouts"
             label="To artisan families"
             value={formatInr(economic.income_to_artisans)}
             hint={economic.pct_to_artisans === null ? undefined : `${economic.pct_to_artisans}% of income`}
