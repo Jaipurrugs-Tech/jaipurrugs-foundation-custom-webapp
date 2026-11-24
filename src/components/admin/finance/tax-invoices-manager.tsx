@@ -19,6 +19,7 @@ import {
   paymentModeLabel,
   type PaymentMode,
 } from "@/lib/finance/constants";
+import { exportTaxInvoices } from "@/lib/actions/exports";
 import { openTaxInvoicePdf } from "@/lib/finance/open-tax-invoice";
 import type { Option, ProformaBalance, TaxInvoiceRow } from "@/lib/finance/queries";
 import { formatPiDate, formatRupees } from "@/lib/invoices/calc";
@@ -26,6 +27,7 @@ import { todayIST } from "@/lib/visits/time";
 import { InvoiceStatusChip } from "../invoices/invoice-status-chip";
 import { OptionSelect } from "../invoices/option-select";
 import { StatCard } from "../visits/stat-card";
+import { ExportButton } from "../export-button";
 import { ConfirmDelete } from "./confirm-delete";
 
 /** What the form opens with: an existing tax invoice, or a new one for a trip and/or PI. */
@@ -412,6 +414,7 @@ export function TaxInvoicesManager({
                 <SearchField.ClearButton />
               </SearchField.Group>
             </SearchField>
+            <ExportButton onExport={() => exportTaxInvoices()} />
             <Button onPress={() => setTarget({ taxInvoice: null, visitId: null, proformaId: null })}>
               <Plus className="size-4" />
               Add tax invoice

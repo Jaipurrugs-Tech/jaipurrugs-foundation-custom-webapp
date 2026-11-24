@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Pencil, Plus, TrashBin } from "@gravity-ui/icons";
 import { AlertDialog, Button, SearchField, Table, toast } from "@heroui/react";
+import { exportProformaInvoices } from "@/lib/actions/exports";
 import { deleteInvoice, setInvoiceStatus } from "@/lib/actions/invoices";
 import { formatPiDate, formatRupees } from "@/lib/invoices/calc";
 import { INVOICE_STATUSES, REVENUE_STATUSES, type InvoiceStatus } from "@/lib/invoices/constants";
 import type { InvoiceListItem } from "@/lib/invoices/types";
+import { ExportButton } from "../export-button";
 import { OptionSelect } from "./option-select";
 import { InvoiceStatusMenu } from "./invoice-status-chip";
 import { PdfActions } from "./pdf-actions";
@@ -84,13 +86,16 @@ export function InvoicesTable({ invoices }: { invoices: InvoiceListItem[] }) {
             onChange={setStatus}
           />
         </div>
-        <Link
-          className="inline-flex h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-foreground hover:opacity-90"
-          href="/invoices/new"
-        >
-          <Plus className="size-4" />
-          New proforma invoice
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportButton onExport={() => exportProformaInvoices({ status: status || undefined })} />
+          <Link
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-accent px-4 text-sm font-medium text-accent-foreground hover:opacity-90"
+            href="/invoices/new"
+          >
+            <Plus className="size-4" />
+            New proforma invoice
+          </Link>
+        </div>
       </div>
 
       {invoices.length === 0 ? (
