@@ -6,8 +6,9 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export default async function PartnersPage() {
+export default async function PartnersPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   await requireActiveTeamMember();
+  const { tab } = await searchParams;
   const supabase = await createClient();
   const [{ data: partners }, { data: reviews }] = await Promise.all([
     supabase.from("partners").select("*").order("name"),
@@ -29,6 +30,7 @@ export default async function PartnersPage() {
         </p>
       </div>
       <PartnersTabs
+        defaultTab={tab === "reviews" ? "reviews" : "partners"}
         partners={<PartnersManager partners={partners ?? []} />}
         reviews={<ReviewsPanel reviews={reviews ?? []} />}
       />

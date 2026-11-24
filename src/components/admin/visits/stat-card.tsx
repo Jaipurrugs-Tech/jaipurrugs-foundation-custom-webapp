@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 
 /** Same card shell as the form metrics cards (src/components/admin/metrics). */
 export function StatCard({
@@ -7,6 +8,7 @@ export function StatCard({
   hint,
   icon,
   compact = false,
+  href,
 }: {
   label: string;
   value: ReactNode;
@@ -14,17 +16,27 @@ export function StatCard({
   icon?: ReactNode;
   /** Tighter padding and a smaller number, for rows of small tiles. */
   compact?: boolean;
+  /** Makes the whole tile a link (compact tiles only). */
+  href?: string;
 }) {
   if (compact) {
-    return (
-      <div className="flex min-w-0 flex-col gap-1 rounded-xl border border-border bg-white px-3 py-2.5 shadow-2xs">
+    const body = (
+      <>
         <div className="flex items-center justify-between gap-2 text-muted">
           <span className="truncate text-[11px] font-semibold uppercase tracking-wider">{label}</span>
           {icon}
         </div>
         <span className="text-2xl font-bold leading-tight text-foreground">{value}</span>
         {hint ? <span className="truncate text-xs text-muted" title={hint}>{hint}</span> : null}
-      </div>
+      </>
+    );
+    const shell = "flex min-w-0 flex-col gap-1 rounded-xl border border-border bg-white px-3 py-2.5 shadow-2xs";
+    return href ? (
+      <Link className={`${shell} transition-colors hover:border-accent/60 hover:bg-accent/5`} href={href}>
+        {body}
+      </Link>
+    ) : (
+      <div className={shell}>{body}</div>
     );
   }
   return (
