@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local tooling: Claude Code worktrees/settings, not app code.
+    ".claude/**",
     // BKLit UI chart source installed with the shadcn CLI (`shadcn add @bklit/...`).
     // Vendored third-party code: not linted here. Only the two local edits we made
     // (no `dark:` classes, a fixed import path) differ from the registry copy.
