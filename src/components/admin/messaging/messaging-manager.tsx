@@ -19,7 +19,7 @@ export function MessagingManager({
   return (
     <Tabs>
       <Tabs.ListContainer>
-        <Tabs.List aria-label="Visit messages">
+        <Tabs.List aria-label="Trip messages">
           <Tabs.Tab id="sequences">
             Sequences ({sets.length})
             <Tabs.Indicator />

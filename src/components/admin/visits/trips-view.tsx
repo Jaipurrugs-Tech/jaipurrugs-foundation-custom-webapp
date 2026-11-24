@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ArrowDownToLine,
   Calendar,
   Ellipsis,
   Envelope,
@@ -27,7 +28,9 @@ import {
 } from "@heroui/react";
 import type { CalendarDate } from "@internationalized/date";
 import { setVisitDetailView, setVisitStatus } from "@/lib/actions/visits";
-import { formatPhone } from "@/lib/mastra/phone";
+import { formatPhone, toWhatsAppParticipantId } from "@/lib/mastra/phone";
+import { toCsv } from "@/lib/csv";
+import { downloadCsv } from "@/lib/download-csv";
 import {
   PROGRAM_CATEGORIES,
   VISIT_STATUSES,
@@ -50,13 +53,16 @@ import { VisitStatusChip } from "./visit-status-chip";
 
 export type TripsViewMode = "calendar" | "grid";
 
+// Filters sit two to a row on phones and at their own width from `sm` up.
+const FILTER_WIDTH = "w-[calc(50%-0.375rem)] sm:w-44";
+
 
 type DateRange = { start: CalendarDate; end: CalendarDate };
 
 function DateRangeFilter({ value, onChange }: { value: DateRange | null; onChange: (value: DateRange | null) => void }) {
   return (
-    <div className="flex items-end gap-1">
-      <DateRangePicker className="w-64" value={value} onChange={(next) => onChange(next as DateRange | null)}>
+    <div className="flex w-full items-end gap-1 sm:w-auto">
+      <DateRangePicker className="min-w-0 flex-1 sm:w-64 sm:flex-none" value={value} onChange={(next) => onChange(next as DateRange | null)}>
         <Label>Dates</Label>
         <DateField.Group fullWidth>
           <DateField.Input slot="start">{(segment) => <DateField.Segment segment={segment} />}</DateField.Input>
@@ -116,7 +122,7 @@ function VisitActionsMenu({
 }) {
   return (
     <Dropdown>
-      <Button isIconOnly aria-label="Visit actions" size="sm" variant="ghost">
+      <Button isIconOnly aria-label="Trip actions" size="sm" variant="ghost">
         <Ellipsis className="size-4" />
       </Button>
       <Dropdown.Popover placement="bottom end">
@@ -127,9 +133,9 @@ function VisitActionsMenu({
             else if (key === "messages") onMessages();
           }}
         >
-          <Dropdown.Item id="edit" textValue="Edit visit">
+          <Dropdown.Item id="edit" textValue="Edit trip">
             <Pencil className="size-4 shrink-0 text-muted" />
-            <Label>Edit visit</Label>
+            <Label>Edit trip</Label>
           </Dropdown.Item>
           <Dropdown.Item id="guests" textValue="Manage guests">
             <Persons className="size-4 shrink-0 text-muted" />
@@ -165,6 +171,34 @@ function VisitActionsMenu({
     </Dropdown>
   );
 }
+
+/** tel: link for a stored phone number (digits with country code when we can tell). */
+function telHref(phone: string) {
+  const digits = toWhatsAppParticipantId(phone);
+  return digits ? `tel:+${digits}` : `tel:${phone}`;
+}
+
+const EXPORT_HEADERS = [
+  "Date",
+  "End date",
+  "Start time",
+  "End time",
+  "Programs",
+  "Status",
+  "Primary contact",
+  "Primary contact phone",
+  "Primary contact email",
+  "Institute / source",
+  "Coming from",
+  "Visitor category",
+  "Booking channel",
+  "Headcount",
+  "Villages",
+  "Facilitators",
+  "Tax invoice numbers",
+  "Tax invoice total",
+  "PI numbers",
+];
 
 /** Trips and calendar in one place: shared filters, two ways to look at the result. */
 export function TripsView({
@@ -312,6 +346,32 @@ export function TripsView({
     if (result.error) toast.danger(result.error);
   }
 
+  /** Downloads the trips that match the current filters as a CSV (built here from the loaded list). */
+  function exportCsv() {
+    const rows = filtered.map((v) => [
+      v.visit_date,
+      v.end_date,
+      v.start_time?.slice(0, 5),
+      v.end_time?.slice(0, 5),
+      v.visit_type,
+      visitStatusLabel(v.status),
+      v.primaryGuest ? v.primaryGuest.name : v.poc_name,
+      v.primaryGuest ? formatPhone(v.primaryGuest.phone) : v.poc_phone,
+      v.primaryGuest?.email,
+      v.source,
+      v.origin_place,
+      v.visitor_category ? visitorCategoryLabel(v.visitor_category) : v.visitor_group,
+      v.booking_channel ? bookingChannelLabel(v.booking_channel) : null,
+      v.headcount,
+      v.villageIds.map((id) => villageName.get(id) ?? "Unknown").join(", "),
+      facilitatorNames(v),
+      v.taxInvoices.map((t) => t.invoice_number).join(", "),
+      v.taxInvoices.length ? v.taxInvoices.reduce((sum, t) => sum + Number(t.amount ?? 0), 0) : null,
+      v.invoices.map((i) => i.pi_number).filter(Boolean).join(", "),
+    ]);
+    downloadCsv(toCsv(EXPORT_HEADERS, rows), `trips-${today}.csv`);
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -331,13 +391,21 @@ export function TripsView({
             </Tabs.List>
           </Tabs.ListContainer>
         </Tabs>
-        <Button onPress={() => openForm(null)}>
-          <Plus className="size-4" />
-          Add visit
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {view === "grid" ? (
+            <Button isDisabled={filtered.length === 0} variant="secondary" onPress={exportCsv}>
+              <ArrowDownToLine className="size-4" />
+              Export
+            </Button>
+          ) : null}
+          <Button onPress={() => openForm(null)}>
+            <Plus className="size-4" />
+            Add trip
+          </Button>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-border/70 bg-white p-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-border/70 bg-white p-3 sm:p-4">
         <SearchField className="w-full sm:w-64" value={query} onChange={setQuery}>
           <Label>Search</Label>
           <SearchField.Group>
@@ -348,14 +416,17 @@ export function TripsView({
         </SearchField>
         <FilterSelect
           allLabel="All statuses"
+          className={FILTER_WIDTH}
           label="Status"
           options={VISIT_STATUSES}
           value={status}
           onChange={setStatus}
         />
-        <FilterSelect allLabel="All types" label="Visit type" options={PROGRAM_CATEGORIES} value={program} onChange={setProgram} />
+        <FilterSelect allLabel="All types"
+          className={FILTER_WIDTH} label="Visit type" options={PROGRAM_CATEGORIES} value={program} onChange={setProgram} />
         <FilterSelect
           allLabel="All villages"
+          className={FILTER_WIDTH}
           label="Village"
           options={reference.villages.map((v) => ({ id: v.id, label: v.name }))}
           value={villageId}
@@ -363,6 +434,7 @@ export function TripsView({
         />
         <FilterSelect
           allLabel="All facilitators"
+          className={FILTER_WIDTH}
           label="Facilitator"
           options={reference.facilitators.map((f) => ({
             id: f.id,
@@ -381,7 +453,7 @@ export function TripsView({
 
       {filtersActive ? (
         <p className="-mt-2 text-sm text-muted">
-          {filtered.length} of {visits.length} visit{visits.length === 1 ? "" : "s"} match these filters.
+          {filtered.length} of {visits.length} trip{visits.length === 1 ? "" : "s"} match these filters.
         </p>
       ) : null}
 
@@ -397,27 +469,81 @@ export function TripsView({
         />
       ) : visits.length === 0 ? (
         <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-dashed border-border p-16 text-center">
-          <p className="text-sm font-medium">No visits yet</p>
+          <p className="text-sm font-medium">No trips yet</p>
           <p className="max-w-md text-sm text-muted">
-            Add a visit, attach its villages and guests, and the WhatsApp agent can answer guests&apos; questions
-            about it and send the after-visit messages.
+            Add a trip, attach its villages and guests, and the WhatsApp agent can answer guests&apos; questions
+            about it and send the after-trip messages.
           </p>
         </div>
       ) : filtered.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted">
-          No visits match these filters.
+          No trips match these filters.
         </p>
       ) : (
-        <Table>
+        <>
+        {/* Phones: one card per trip; tapping it opens the same details as a table row. */}
+        <ul aria-label="Trips" className="flex flex-col gap-2 md:hidden">
+          {filtered.map((visit) => {
+            const villages = visit.villageIds.map((id) => villageName.get(id) ?? "Unknown");
+            const facilitators = facilitatorNames(visit);
+            const contactName = visit.primaryGuest ? (visit.primaryGuest.name ?? "Unnamed contact") : visit.poc_name;
+            const contactPhone = visit.primaryGuest?.phone ?? visit.poc_phone;
+            return (
+              <li
+                key={visit.id}
+                className="cursor-pointer rounded-xl border border-border/70 bg-white transition-colors active:bg-neutral-50"
+                onClick={() => openDetail(visit)}
+              >
+                <button className="flex w-full flex-col gap-1 px-4 pt-3 text-left" type="button">
+                  <span className="flex w-full items-start justify-between gap-2">
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium">{formatDateRange(visit.visit_date, visit.end_date)}</span>
+                      <span className="block text-xs text-muted">{formatTimeRange(visit.start_time, visit.end_time)}</span>
+                    </span>
+                    <VisitStatusChip status={visit.status} />
+                  </span>
+                  <span className="text-sm">{visit.visit_type}</span>
+                </button>
+                <div className="flex flex-col gap-1 px-4 pb-3 pt-1 text-xs text-muted">
+                  {contactName || contactPhone ? (
+                    <p className="flex flex-wrap items-center gap-x-2">
+                      <span className="text-sm text-foreground">{contactName ?? "Contact"}</span>
+                      {contactPhone ? (
+                        <a
+                          className="tabular-nums text-accent underline-offset-2 hover:underline"
+                          href={telHref(contactPhone)}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {formatPhone(contactPhone)}
+                        </a>
+                      ) : null}
+                    </p>
+                  ) : null}
+                  {villages.length ? (
+                    <div className="flex flex-wrap gap-1">
+                      {villages.map((name, i) => (
+                        <Chip key={visit.villageIds[i]} size="sm" variant="soft">
+                          {name}
+                        </Chip>
+                      ))}
+                    </div>
+                  ) : null}
+                  {facilitators ? <p>Facilitators: {facilitators}</p> : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        <Table className="hidden md:block">
           <Table.ScrollContainer>
             <Table.Content
-              aria-label="Visits"
+              aria-label="Trips"
               className="w-full min-w-[1120px]"
               onRowAction={handleRowAction}
             >
               <Table.Header>
                 <Table.Column isRowHeader>Date</Table.Column>
-                <Table.Column>Visit</Table.Column>
+                <Table.Column>Trip</Table.Column>
                 <Table.Column>Primary POC</Table.Column>
                 <Table.Column>Facilitator</Table.Column>
                 <Table.Column>Group</Table.Column>
@@ -527,6 +653,7 @@ export function TripsView({
             </Table.Content>
           </Table.ScrollContainer>
         </Table>
+        </>
       )}
 
       <TaxInvoiceDialog

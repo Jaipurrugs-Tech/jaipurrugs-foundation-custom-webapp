@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowUpFromLine, Paperclip, Pencil, Plus, TrashBin } from "@gravity-ui/icons";
 import { Button, Chip, Input, Label, Modal, SearchField, Table, TextArea, TextField, toast } from "@heroui/react";
+import { exportExpenses } from "@/lib/actions/exports";
 import { deleteExpense, removeExpenseReceipt, saveExpense, uploadExpenseReceipt } from "@/lib/actions/finance";
 import {
   EXPENSE_CATEGORIES,
@@ -15,12 +16,61 @@ import {
   type ExpenseCategory,
   type PaymentMode,
 } from "@/lib/finance/constants";
+import { resolveFinancePeriod } from "@/lib/finance/period";
 import type { ExpenseRow, Option } from "@/lib/finance/queries";
 import { formatPiDate, formatRupees } from "@/lib/invoices/calc";
 import { todayIST } from "@/lib/visits/time";
 import { OptionSelect } from "../invoices/option-select";
 import { StatCard } from "../visits/stat-card";
+import { ExportButton } from "../export-button";
 import { ConfirmDelete } from "./confirm-delete";
+
+const EXPENSE_PERIODS = [
+  { id: "all", label: "All time" },
+  { id: "fy", label: "This FY" },
+  { id: "last_fy", label: "Last FY" },
+  { id: "month", label: "This month" },
+  { id: "custom", label: "Custom" },
+] as const;
+
+type ExpensePeriodId = (typeof EXPENSE_PERIODS)[number]["id"];
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Last day of a YYYY-MM month as YYYY-MM-DD. */
+function monthEnd(month: string) {
+  const [year, m] = month.split("-").map(Number);
+  return `${month}-${String(new Date(Date.UTC(year, m, 0)).getUTCDate()).padStart(2, "0")}`;
+}
+
+/** The from–to dates (either may be open) of an expenses period preset, in IST. */
+function expensePeriodRange(
+  period: ExpensePeriodId,
+  customFrom: string,
+  customTo: string,
+): { from: string | null; to: string | null } {
+  const today = todayIST();
+  switch (period) {
+    case "fy": {
+      // The whole Indian FY (April–March), so future-dated entries still show.
+      const { from } = resolveFinancePeriod({ period: "fy" }, today);
+      return { from, to: `${Number(from.slice(0, 4)) + 1}-03-31` };
+    }
+    case "last_fy": {
+      const { from, to } = resolveFinancePeriod({ period: "last_fy" }, today);
+      return { from, to };
+    }
+    case "month":
+      return { from: `${today.slice(0, 7)}-01`, to: monthEnd(today.slice(0, 7)) };
+    case "custom":
+      return {
+        from: DATE_PATTERN.test(customFrom) ? customFrom : null,
+        to: DATE_PATTERN.test(customTo) ? customTo : null,
+      };
+    default:
+      return { from: null, to: null };
+  }
+}
 
 function ExpenseForm({
   expense,
@@ -208,24 +258,46 @@ export function ExpensesManager({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
+  const [period, setPeriod] = useState<ExpensePeriodId>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [tripId, setTripId] = useState("");
+  const [villageId, setVillageId] = useState("");
   const [editing, setEditing] = useState<ExpenseRow | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ExpenseRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const range = useMemo(() => expensePeriodRange(period, customFrom, customTo), [period, customFrom, customTo]);
+
+  // The picker's recent trips, plus any older trip an expense is linked to.
+  const tripOptions = useMemo(() => {
+    const known = new Set(visitOptions.map((o) => o.id));
+    const extra = new Map<string, string>();
+    for (const e of expenses) {
+      if (e.visit_id && e.visitLabel && !known.has(e.visit_id)) extra.set(e.visit_id, e.visitLabel);
+    }
+    return [...visitOptions, ...[...extra].map(([id, label]) => ({ id, label }))];
+  }, [expenses, visitOptions]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return expenses.filter(
       (e) =>
         (!category || e.category === category) &&
+        (!range.from || e.expense_date >= range.from) &&
+        (!range.to || e.expense_date <= range.to) &&
+        (!tripId || e.visit_id === tripId) &&
+        (!villageId || e.village_id === villageId) &&
         (!q ||
           [e.description, e.paid_to ?? "", e.reference ?? "", e.visitLabel ?? "", e.villageName ?? "", e.notes ?? ""].some(
             (s) => s.toLowerCase().includes(q),
           )),
     );
-  }, [expenses, query, category]);
+  }, [expenses, query, category, range, tripId, villageId]);
 
   const filteredTotal = filtered.reduce((s, e) => s + e.amount, 0);
+  const isFiltered = Boolean(query || category || tripId || villageId || range.from || range.to);
   const thisMonth = todayIST().slice(0, 7);
   const monthTotal = expenses.filter((e) => e.expense_date.startsWith(thisMonth)).reduce((s, e) => s + e.amount, 0);
   const missingReceipts = expenses.filter((e) => !e.receipt_path).length;
@@ -253,7 +325,7 @@ export function ExpensesManager({
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <StatCard label="This month" value={formatRupees(monthTotal)} />
         <StatCard
-          label={query || category ? "Matching expenses" : "All expenses"}
+          label={isFiltered ? "Matching expenses" : "All expenses"}
           value={formatRupees(filteredTotal)}
           hint={`${filtered.length} entries`}
         />
@@ -277,11 +349,77 @@ export function ExpensesManager({
             value={category}
             onChange={setCategory}
           />
+          <OptionSelect
+            className="w-64"
+            label="Trip"
+            noneLabel="All trips"
+            options={tripOptions}
+            value={tripId}
+            onChange={setTripId}
+          />
+          <OptionSelect
+            className="w-48"
+            label="Village"
+            noneLabel="All villages"
+            options={villageOptions}
+            value={villageId}
+            onChange={setVillageId}
+          />
         </div>
-        <Button onPress={() => openForm(null)}>
-          <Plus className="size-4" />
-          Add expense
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportButton
+            onExport={() =>
+              exportExpenses({
+                from: range.from ?? undefined,
+                to: range.to ?? undefined,
+                category: category || undefined,
+                visitId: tripId || undefined,
+                villageId: villageId || undefined,
+              })
+            }
+          />
+          <Button onPress={() => openForm(null)}>
+            <Plus className="size-4" />
+            Add expense
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3">
+        <nav aria-label="Period" className="flex gap-1 rounded-xl bg-neutral-100 p-1">
+          {EXPENSE_PERIODS.map((preset) => (
+            <button
+              key={preset.id}
+              aria-pressed={preset.id === period}
+              className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                preset.id === period ? "bg-white font-medium shadow-sm" : "text-muted hover:text-foreground"
+              }`}
+              type="button"
+              onClick={() => setPeriod(preset.id)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </nav>
+        {period === "custom" ? (
+          <>
+            <TextField className="w-44" value={customFrom} onChange={setCustomFrom}>
+              <Label>From</Label>
+              <Input max={customTo || undefined} type="date" />
+            </TextField>
+            <TextField className="w-44" value={customTo} onChange={setCustomTo}>
+              <Label>To</Label>
+              <Input min={customFrom || undefined} type="date" />
+            </TextField>
+          </>
+        ) : null}
+        <p className="ml-auto pb-2 text-sm text-muted">
+          {filtered.length} {filtered.length === 1 ? "expense" : "expenses"} ·{" "}
+          <span className="font-medium text-foreground">{formatRupees(filteredTotal)}</span>
+          {range.from || range.to
+            ? ` (${range.from ? formatPiDate(range.from) : "start"} – ${range.to ? formatPiDate(range.to) : "now"})`
+            : ""}
+        </p>
       </div>
 
       {expenses.length === 0 ? (

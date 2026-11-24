@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CircleExclamation, FileText, Paperclip, PaperPlane, Xmark } from "@gravity-ui/icons";
+import { ArrowLeft, CircleExclamation, FileText, Paperclip, PaperPlane, Xmark } from "@gravity-ui/icons";
 import { Button, Chip, Disclosure, Switch, TextArea, TextField, toast } from "@heroui/react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -142,11 +142,14 @@ export function ThreadPanel({
   thread,
   conversation,
   autoReplyEnabled,
+  onBack,
 }: {
   thread: InboxThread;
   /** The live row from the inbox list (falls back to the server-rendered one). */
   conversation: InboxConversation;
   autoReplyEnabled: boolean;
+  /** Phones only: back from the open thread to the conversation list. */
+  onBack?: () => void;
 }) {
   const router = useRouter();
   const now = useNow(30_000);
@@ -310,7 +313,12 @@ export function ThreadPanel({
   return (
     <>
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-border/60 px-5 py-3">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border/60 px-3 py-3 md:px-5">
+        {onBack ? (
+          <Button isIconOnly aria-label="Back to conversations" className="md:hidden" size="sm" variant="ghost" onPress={onBack}>
+            <ArrowLeft className="size-4" />
+          </Button>
+        ) : null}
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-sm font-semibold">{contactLabel(conversation)}</span>
           <span className="text-xs text-muted">

@@ -20,7 +20,7 @@ export default async function FinanceInvoicesPage({ searchParams }: { searchPara
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Invoices</h1>
+        <h1 className="text-xl font-semibold">Tax invoices</h1>
         <p className="text-sm text-muted">
           Tax invoices for trips the client has paid for, as issued in your accounts, with their PDF. Each one shows on
           its trip in Trips. Link it to the proforma invoice it settles to keep that PI&apos;s balance up to date.

@@ -216,7 +216,7 @@ export function GuestBulkUpload({ visitId, onImported }: { visitId: string; onIm
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted">
-              Each guest is added to Leads (an existing lead with the same number is reused) and to this visit.
+              Each guest is added to Leads (an existing lead with the same number is reused) and to this trip.
               {problems.length > 0 ? " Rows with problems are skipped." : ""}
             </p>
             <Button isDisabled={validCount === 0} isPending={isImporting} onPress={handleImport}>
@@ -256,14 +256,14 @@ function ResultSummary({ result }: { result: GuestImportResult }) {
     <div className="flex flex-col gap-2 rounded-xl bg-success/10 p-3 text-sm">
       <p className="flex items-center gap-2 font-medium text-success">
         <CircleCheck className="size-4" />
-        {added} guest{added === 1 ? "" : "s"} added to this visit
+        {added} guest{added === 1 ? "" : "s"} added to this trip
       </p>
       <ul className="list-disc pl-6 text-muted">
         <li>
           {result.newLeads ?? 0} new in Leads
           {existingLeads > 0 ? `, ${existingLeads} already in Leads (reused)` : ""}
         </li>
-        {result.alreadyOnVisit ? <li>{result.alreadyOnVisit} already on this visit (left as they were)</li> : null}
+        {result.alreadyOnVisit ? <li>{result.alreadyOnVisit} already on this trip (left as they were)</li> : null}
         {problems.length > 0 ? <li>{problems.length} skipped</li> : null}
       </ul>
       {problems.length > 0 ? <ProblemList problems={problems} /> : null}

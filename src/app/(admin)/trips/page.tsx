@@ -43,8 +43,8 @@ export default async function TripsPage({
       <div>
         <h1 className="text-xl font-semibold">Trips</h1>
         <p className="text-sm text-muted">
-          Every visit, on a calendar or in a grid. Click a visit for its details; guests are contacts from Leads,
-          and the WhatsApp agent uses this to answer their questions and send the after-visit messages.
+          Every trip, on a calendar or in a grid. Click a trip for its details; guests are contacts from Leads,
+          and the WhatsApp agent uses this to answer their questions and send the after-trip messages.
         </p>
       </div>
       <TripsView

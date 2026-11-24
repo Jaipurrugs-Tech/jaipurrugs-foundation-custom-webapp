@@ -81,6 +81,26 @@ export async function updateFormSlug(formId: string, newSlug: string): Promise<s
   return check.slug;
 }
 
+type ServerClient = Awaited<ReturnType<typeof createClient>>;
+
+/** The title as a slug, suffixed "-1", "-2", … until no other form uses it; null if the title has no slug characters. */
+async function uniqueSlugFromTitle(supabase: ServerClient, formId: string, title: string): Promise<string | null> {
+  const candidate = sanitizeSlug(title);
+  if (!candidate) return null;
+  let attempt = candidate;
+  let counter = 1;
+  while (true) {
+    const { data: existing } = await supabase
+      .from("forms")
+      .select("id")
+      .ilike("slug", attempt)
+      .neq("id", formId)
+      .maybeSingle();
+    if (!existing) return attempt;
+    attempt = `${candidate}-${counter++}`;
+  }
+}
+
 // Debounced from the sticky top bar's inline-editable title — see
 // docs/phases/03-field-registry-editor.md.
 export async function updateFormTitle(formId: string, title: string): Promise<{ slug?: string }> {
@@ -102,25 +122,10 @@ export async function updateFormTitle(formId: string, title: string): Promise<{ 
 
   // Auto-generate slug from title if the current slug is an untitled default
   if (form?.slug?.startsWith("untitled-form-") && title.trim()) {
-    const candidate = sanitizeSlug(title);
-    if (candidate) {
-      let attempt = candidate;
-      let counter = 1;
-      while (true) {
-        const { data: existing } = await supabase
-          .from("forms")
-          .select("id")
-          .ilike("slug", attempt)
-          .neq("id", formId)
-          .maybeSingle();
-
-        if (!existing) {
-          updates.slug = attempt;
-          updatedSlug = attempt;
-          break;
-        }
-        attempt = `${candidate}-${counter++}`;
-      }
+    const slug = await uniqueSlugFromTitle(supabase, formId, title);
+    if (slug) {
+      updates.slug = slug;
+      updatedSlug = slug;
     }
   }
 
@@ -156,6 +161,58 @@ export async function archiveForm(formId: string) {
 
 export async function unarchiveForm(formId: string) {
   await setFormStatus(formId, "draft");
+}
+
+/**
+ * Copies a form and its live fields into a new draft titled "<title> (copy)". The DB
+ * defaults give it a fresh share token and slug (as in createForm); the slug is then
+ * derived from the new title (as in updateFormTitle). Submissions are not copied.
+ * Logo/cover/footer/section images keep pointing at the original's public URLs —
+ * deleteFormAsset leaves a file alone while another form still uses it.
+ */
+export async function duplicateForm(formId: string): Promise<{ id?: string; error?: string }> {
+  await requireActiveTeamMember();
+
+  const supabase = await createClient();
+  const [{ data: original, error: formError }, { data: fields, error: fieldsError }] = await Promise.all([
+    supabase.from("forms").select("title, description, settings").eq("id", formId).single(),
+    supabase
+      .from("form_fields")
+      .select("type, position, label, description, placeholder, required, config, validation, logic")
+      .eq("form_id", formId)
+      .is("deleted_at", null)
+      .order("position", { ascending: true }),
+  ]);
+  if (formError || !original) return { error: "Could not find the form to duplicate." };
+  if (fieldsError) return { error: "Could not read the form's fields." };
+
+  const title = `${original.title?.trim() || "Untitled form"} (copy)`;
+  const { data: copy, error: insertError } = await supabase
+    .from("forms")
+    .insert({ title, description: original.description, settings: original.settings, status: "draft" })
+    .select("id")
+    .single();
+  if (insertError || !copy) return { error: "Could not create the copy." };
+
+  if (fields && fields.length > 0) {
+    const { error: copyFieldsError } = await supabase
+      .from("form_fields")
+      .insert(fields.map((field) => ({ ...field, form_id: copy.id })));
+    if (copyFieldsError) {
+      // Don't leave a half-copied form behind.
+      await supabase.from("forms").delete().eq("id", copy.id);
+      return { error: "Could not copy the form's fields." };
+    }
+  }
+
+  const slug = await uniqueSlugFromTitle(supabase, copy.id, title);
+  if (slug) {
+    // Non-fatal: the copy keeps its untitled-form-… slug if this fails.
+    await supabase.from("forms").update({ slug }).eq("id", copy.id);
+  }
+
+  revalidatePath("/forms");
+  return { id: copy.id };
 }
 
 async function getLiveSiblingPositions(supabase: Awaited<ReturnType<typeof createClient>>, formId: string) {
@@ -408,6 +465,29 @@ export async function uploadFormAsset(
   return publicUrlData.publicUrl;
 }
 
+/**
+ * Duplicated forms share their original's image URLs (see duplicateForm). A file lives
+ * under forms/<owner id>/…; it's still in use if any form other than its owner
+ * references it in its settings or a section field's config.
+ */
+async function isAssetUsedByAnotherForm(supabase: ServerClient, publicUrl: string, storagePath: string) {
+  const ownerId = storagePath.match(/^forms\/([^/]+)\//)?.[1] ?? null;
+  const [{ data: forms, error: formsError }, { data: sections, error: sectionsError }] = await Promise.all([
+    supabase.from("forms").select("id, settings"),
+    supabase.from("form_fields").select("form_id, config").eq("type", "section").is("deleted_at", null),
+  ]);
+  // When unsure, keep the file: an orphaned image is better than a broken one.
+  if (formsError || sectionsError) return true;
+  const users = new Set<string>();
+  for (const form of forms ?? []) {
+    if (JSON.stringify(form.settings ?? {}).includes(publicUrl)) users.add(form.id);
+  }
+  for (const section of sections ?? []) {
+    if (JSON.stringify(section.config ?? {}).includes(publicUrl)) users.add(section.form_id);
+  }
+  return [...users].some((id) => id !== ownerId);
+}
+
 export async function deleteFormAsset(publicUrl: string) {
   await requireActiveTeamMember();
 
@@ -415,9 +495,10 @@ export async function deleteFormAsset(publicUrl: string) {
     const urlObj = new URL(publicUrl);
     const pathIndex = urlObj.pathname.indexOf("/form-assets/");
     if (pathIndex !== -1) {
-      const storagePath = urlObj.pathname.substring(pathIndex + "/form-assets/".length);
+      const storagePath = decodeURIComponent(urlObj.pathname.substring(pathIndex + "/form-assets/".length));
       const supabase = await createClient();
-      await supabase.storage.from("form-assets").remove([decodeURIComponent(storagePath)]);
+      if (await isAssetUsedByAnotherForm(supabase, publicUrl, storagePath)) return;
+      await supabase.storage.from("form-assets").remove([storagePath]);
     }
   } catch {
     // Non-fatal if URL parsing or cleanup fails

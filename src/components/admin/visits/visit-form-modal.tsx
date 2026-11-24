@@ -55,7 +55,7 @@ const NONE = "__none";
 // back to the step that needs fixing.
 const STEPS: { title: string; fields: (keyof VisitInput)[] }[] = [
   {
-    title: "Visit details",
+    title: "Trip details",
     fields: [
       "programCategories",
       "status",
@@ -344,7 +344,7 @@ function VisitInvoicesSummary({ visit }: { visit: VisitListItem | null }) {
           <p className="text-sm font-medium">Charges (proforma invoices)</p>
           <p className="text-xs text-muted">
             Priced from Services, or uploaded if it was made outside this platform. Issued and paid PIs count as this
-            visit&apos;s revenue
+            trip&apos;s revenue
             {visit?.amount_charged !== null && visit?.amount_charged !== undefined
               ? `: ${formatInr(visit.amount_charged)} before GST.`
               : "."}
@@ -393,7 +393,7 @@ function VisitInvoicesSummary({ visit }: { visit: VisitListItem | null }) {
         </ul>
       ) : (
         <p className="text-xs text-muted">
-          {visit ? "No proforma invoice yet." : "Save the visit first, then raise or upload its proforma invoice."}
+          {visit ? "No proforma invoice yet." : "Save the trip first, then raise or upload its proforma invoice."}
         </p>
       )}
       {visit ? (
@@ -661,7 +661,7 @@ function VisitForm({
     const result = await createVisit(input);
     setIsPending(false);
     if (result.error || !result.visit) {
-      setError(result.error ?? "Could not create the visit.");
+      setError(result.error ?? "Could not create the trip.");
       return;
     }
     onSaved(result.visit);
@@ -756,7 +756,7 @@ function VisitForm({
                   </DateField.Suffix>
                 </DateField.Group>
                 <DateRangePicker.Popover>
-                  <RangeCalendar aria-label="Visit dates">
+                  <RangeCalendar aria-label="Trip dates">
                     <RangeCalendar.Header>
                       <RangeCalendar.YearPickerTrigger>
                         <RangeCalendar.YearPickerTriggerHeading />
@@ -874,7 +874,7 @@ function VisitForm({
               <div className="sm:col-span-2">
                 <p className="text-sm font-medium">Primary POC</p>
                 <p className="text-xs text-muted">
-                  The visit&apos;s point of contact. They are saved in Leads (matched by phone number) and added as
+                  The trip&apos;s point of contact. They are saved in Leads (matched by phone number) and added as
                   the primary guest — the person who receives messages meant for the POC, like the referral
                   request.
                 </p>
@@ -951,12 +951,12 @@ function VisitForm({
               <Input min={0} placeholder="e.g. 9000" step="0.01" type="number" />
             </TextField>
             <p className="self-end pb-2 text-xs text-muted sm:col-span-1">
-              Sales that came from this visit are tracked separately below, by invoice.
+              Sales that came from this trip are tracked separately below, by invoice.
             </p>
             {SALE_CHANNELS.map((channel) => (
               <SalesEditor
                 key={channel.id}
-                label={`${channel.label} attributed to this visit`}
+                label={`${channel.label} attributed to this trip`}
                 rows={sales[channel.id] ?? []}
                 onChange={(rows) => setSales((prev) => ({ ...prev, [channel.id]: rows }))}
               />
@@ -991,7 +991,7 @@ function VisitForm({
             ) : null}
             {isEditing && visit.status !== "cancelled" ? (
               <Button type="button" variant="danger-soft" onPress={() => setIsConfirmingCancel(true)}>
-                Cancel visit
+                Cancel trip
               </Button>
             ) : null}
           </div>
@@ -1006,7 +1006,7 @@ function VisitForm({
             ) : null}
             {isEditing || step === LAST_STEP ? (
               <Button isPending={isPending} type="button" onPress={handleSave}>
-                {isEditing ? "Save changes" : "Add visit"}
+                {isEditing ? "Save changes" : "Add trip"}
               </Button>
             ) : null}
           </div>
@@ -1020,21 +1020,21 @@ function VisitForm({
               <AlertDialog.CloseTrigger />
               <AlertDialog.Header>
                 <AlertDialog.Icon status="danger" />
-                <AlertDialog.Heading>Cancel this visit?</AlertDialog.Heading>
+                <AlertDialog.Heading>Cancel this trip?</AlertDialog.Heading>
               </AlertDialog.Header>
               <AlertDialog.Body>
                 <p>
-                  The visit is marked cancelled and any WhatsApp messages still scheduled for it are stopped.{" "}
-                  <strong>Changes you have made in this form but not saved will be discarded.</strong> The visit
+                  The trip is marked cancelled and any WhatsApp messages still scheduled for it are stopped.{" "}
+                  <strong>Changes you have made in this form but not saved will be discarded.</strong> The trip
                   and its guest list stay on record.
                 </p>
               </AlertDialog.Body>
               <AlertDialog.Footer>
                 <Button slot="close" variant="tertiary">
-                  Keep visit
+                  Keep trip
                 </Button>
                 <Button isPending={isCancelling} variant="danger" onPress={handleCancelVisit}>
-                  Cancel visit
+                  Cancel trip
                 </Button>
               </AlertDialog.Footer>
             </AlertDialog.Dialog>
@@ -1067,7 +1067,7 @@ export function VisitFormModal({
         <Modal.Dialog className="sm:max-w-2xl">
           <Modal.CloseTrigger />
           <Modal.Header>
-            <Modal.Heading>{visit ? "Edit visit" : "Add visit"}</Modal.Heading>
+            <Modal.Heading>{visit ? "Edit trip" : "Add trip"}</Modal.Heading>
           </Modal.Header>
           <Modal.Body>
             {/* Keyed so switching visits (or opening a fresh one) resets every field. */}

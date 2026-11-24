@@ -216,7 +216,7 @@ function VisitDetails({
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-muted">None yet. Charges for this visit are raised as proforma invoices.</p>
+            <p className="text-xs text-muted">None yet. Charges for this trip are raised as proforma invoices.</p>
           )}
         </div>
         {SALE_CHANNELS.map((channel) => {
@@ -238,7 +238,7 @@ function VisitDetails({
         })}
       </Section>
 
-      <Section title="After the visit" rows={[{ label: "Feedback form", value: feedbackForm }]} />
+      <Section title="After the trip" rows={[{ label: "Feedback form", value: feedbackForm }]} />
 
       {visit.notes ? (
         <Section title="Internal notes">

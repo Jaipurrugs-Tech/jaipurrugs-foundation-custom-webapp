@@ -3,8 +3,10 @@
 import { useMemo, useState } from "react";
 import { Pencil } from "@gravity-ui/icons";
 import { Button, Chip, Label, ListBox, SearchField, Select, Table } from "@heroui/react";
+import { exportLeads } from "@/lib/actions/exports";
 import { leadAttributeValues, type LeadAttribute } from "@/lib/leads/fields";
 import { formatPhone } from "@/lib/mastra/phone";
+import { ExportButton } from "../export-button";
 import { LeadEditModal } from "./lead-edit-modal";
 import type { LeadListRow, LeadRow } from "./leads-workspace";
 
@@ -85,6 +87,12 @@ export function LeadsTable({
         {truncated ? (
           <p className="pb-2 text-xs text-muted">Showing the 1,000 most recently updated leads.</p>
         ) : null}
+        <div className="ml-auto">
+          <ExportButton
+            label={listFilter === ALL_LISTS ? "Export" : "Export list"}
+            onExport={() => exportLeads({ listId: listFilter === ALL_LISTS ? undefined : listFilter })}
+          />
+        </div>
       </div>
 
       {leads.length === 0 ? (
