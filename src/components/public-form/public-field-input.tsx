@@ -32,12 +32,15 @@ export function PublicFieldInput({
   value,
   formId,
   submissionId,
+  submitterToken,
   onChange,
 }: {
   field: Tables<"form_fields">;
   value: FieldValue;
   formId: string;
   submissionId: string;
+  /** The visitor's submission session token; the server checks it before accepting a file. */
+  submitterToken: string;
   onChange: (val: FieldValue) => void;
 }) {
   const [isUploading, setIsUploading] = useState(false);
@@ -280,11 +283,11 @@ export function PublicFieldInput({
         try {
           const formData = new FormData();
           formData.append("file", file);
-          const meta = await uploadSubmissionFile(formId, submissionId, field.id, formData);
+          const meta = await uploadSubmissionFile(formId, submissionId, field.id, submitterToken, formData);
           onChange([...attachments, meta]);
           toast.success("File attached");
-        } catch {
-          toast.danger("File upload failed.");
+        } catch (error) {
+          toast.danger(error instanceof Error && error.message ? error.message : "File upload failed.");
         } finally {
           setIsUploading(false);
           e.target.value = "";

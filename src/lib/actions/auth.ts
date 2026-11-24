@@ -36,9 +36,11 @@ export async function signIn(
   const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
 
   if (signUpError) {
-    // Either "already registered" (this was actually a wrong-password attempt
-    // on an existing account) or the whitelist hook's 403 rejection.
-    return { error: signUpError.message };
+    // Either "already registered" (a wrong password on an existing account) or
+    // the whitelist hook's rejection. One message for both, so the login page
+    // doesn't reveal which emails are whitelisted or registered.
+    console.warn("[auth] sign-in refused:", signUpError.status, signUpError.code ?? signUpError.message);
+    return { error: "Incorrect email or password, or this email doesn't have access. Ask an admin if you need access." };
   }
 
   if (data.session) {

@@ -388,6 +388,7 @@ export function PublicFormRenderer({
                   field={currentPage.sectionField}
                   formId={form.id}
                   submissionId={submissionId ?? ""}
+                  submitterToken={submitterToken ?? ""}
                   value={null}
                   onChange={() => {}}
                 />
@@ -410,6 +411,7 @@ export function PublicFormRenderer({
                     field={field}
                     formId={form.id}
                     submissionId={submissionId ?? ""}
+                  submitterToken={submitterToken ?? ""}
                     value={answersMap[field.id]}
                     onChange={(val) => handleFieldChange(field.id, val)}
                   />
