@@ -22,7 +22,8 @@ export async function saveService(id: string | null, input: ServiceInput): Promi
 
   const supabase = await createClient();
   const { data: savedId, error } = await supabase.rpc("save_service", {
-    p_id: id,
+    // null = create a new one. Generated RPC types can't mark an argument nullable.
+    p_id: id as string,
     p_service: {
       name: data.name,
       description: blankToNull(data.description),

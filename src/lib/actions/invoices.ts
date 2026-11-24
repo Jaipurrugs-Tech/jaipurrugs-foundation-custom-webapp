@@ -56,7 +56,8 @@ export async function saveInvoice(id: string | null, input: InvoiceInput): Promi
     if (current?.is_external) return { error: "This proforma invoice was uploaded. Edit it from its own page instead." };
   }
   const { data: savedId, error } = await supabase.rpc("save_proforma_invoice", {
-    p_id: id,
+    // null = create a new one. Generated RPC types can't mark an argument nullable.
+    p_id: id as string,
     p_invoice: {
       pi_number: blankToNull(data.piNumber),
       pi_date: data.piDate,
