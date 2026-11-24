@@ -1,12 +1,12 @@
 import { TripsView } from "@/components/admin/visits/trips-view";
 import { requireActiveTeamMember } from "@/lib/auth/session";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import { createClient } from "@/lib/supabase/server";
 import { attachVisitRelations, loadVisitReference } from "@/lib/visits/queries";
 import { MONTH_PATTERN, currentMonthIST, todayIST } from "@/lib/visits/time";
 
 export const dynamic = "force-dynamic";
 
-const VISIT_LIMIT = 1000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function TripsPage({
@@ -18,20 +18,24 @@ export default async function TripsPage({
   const params = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: visits }, reference, { data: auth }] = await Promise.all([
-    supabase
-      .from("visits")
-      .select("*")
-      .order("visit_date", { ascending: false, nullsFirst: true })
-      .order("start_time", { ascending: false, nullsFirst: false })
-      .limit(VISIT_LIMIT),
+  const [visits, reference, { data: auth }] = await Promise.all([
+    // Every trip (paged past Supabase's 1,000-row response cap).
+    fetchAll((from, to) =>
+      supabase
+        .from("visits")
+        .select("*")
+        .order("visit_date", { ascending: false, nullsFirst: true })
+        .order("start_time", { ascending: false, nullsFirst: false })
+        .order("id")
+        .range(from, to),
+    ),
     loadVisitReference(supabase),
     // getUser (not the JWT claims) so a preference saved moments ago is already reflected.
     supabase.auth.getUser(),
   ]);
 
   const visitId = params.visit && UUID_PATTERN.test(params.visit) ? params.visit : null;
-  const linkedVisit = visitId ? visits?.find((v) => v.id === visitId) : undefined;
+  const linkedVisit = visitId ? visits.find((v) => v.id === visitId) : undefined;
   // A linked visit opens on the calendar, at its own month.
   const month =
     params.month && MONTH_PATTERN.test(params.month)
@@ -54,7 +58,7 @@ export default async function TripsPage({
         initialVisitId={linkedVisit ? linkedVisit.id : null}
         reference={reference}
         today={todayIST()}
-        visits={await attachVisitRelations(supabase, visits ?? [])}
+        visits={await attachVisitRelations(supabase, visits)}
       />
     </div>
   );

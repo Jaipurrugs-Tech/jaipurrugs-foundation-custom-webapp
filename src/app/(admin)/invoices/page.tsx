@@ -2,26 +2,30 @@ import { InvoicesWorkspace } from "@/components/admin/invoices/invoices-workspac
 import { requireActiveTeamMember } from "@/lib/auth/session";
 import { visitOptionLabel } from "@/lib/invoices/queries";
 import type { InvoiceListItem } from "@/lib/invoices/types";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-const INVOICE_LIMIT = 1000;
 
 export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   await requireActiveTeamMember();
   const params = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: invoices }, { data: terms }, { data: settings }] = await Promise.all([
-    supabase
-      .from("proforma_invoices")
-      .select(
-        "id, pi_number, pi_date, status, visit_id, billing_name, guests, taxable_total, grand_total, is_external, updated_at, visits(visit_date, program_category, source, headcount)",
-      )
-      .order("pi_date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(INVOICE_LIMIT),
+  const [invoices, { data: terms }, { data: settings }] = await Promise.all([
+    // Every PI (paged past Supabase's 1,000-row response cap).
+    fetchAll((from, to) =>
+      supabase
+        .from("proforma_invoices")
+        .select(
+          "id, pi_number, pi_date, status, visit_id, billing_name, guests, taxable_total, grand_total, is_external, updated_at, visits(visit_date, program_category, source, headcount)",
+        )
+        .order("pi_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to),
+    ),
     supabase.from("invoice_terms").select("*").order("position").order("created_at"),
     supabase.from("invoice_settings").select("*").maybeSingle(),
   ]);
@@ -33,7 +37,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
     qrPreviewUrl = data?.signedUrl ?? null;
   }
 
-  const items: InvoiceListItem[] = (invoices ?? []).map(({ visits, ...invoice }) => ({
+  const items: InvoiceListItem[] = invoices.map(({ visits, ...invoice }) => ({
     ...invoice,
     visitLabel: visits ? visitOptionLabel(visits) : null,
   }));

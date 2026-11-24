@@ -3,13 +3,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables } from "@/lib/types/supabase";
 import { round2 } from "@/lib/invoices/calc";
 import { loadInvoiceVisitOptions, visitOptionLabel } from "@/lib/invoices/queries";
+import { chunk, fetchAll } from "@/lib/supabase/fetch-all";
 import { shiftMonth } from "@/lib/visits/time";
 import { RECEIPT_BUCKET } from "./constants";
 
 type Client = SupabaseClient<Database>;
 
-// Lists are capped; the ledgers are newest first, so the cap only hides the oldest rows.
-const LIST_LIMIT = 1000;
+// Every list and total here reads all matching rows (fetchAll pages past
+// Supabase's 1,000-row response cap), so nothing is silently left out.
 
 export type Option = { id: string; label: string };
 
@@ -24,19 +25,21 @@ export async function loadVisitOptions(supabase: Client): Promise<Option[]> {
 }
 
 export async function loadVillageOptions(supabase: Client): Promise<Option[]> {
-  const { data } = await supabase.from("villages").select("id, name, is_active").order("name");
-  return (data ?? []).map((v) => ({ id: v.id, label: v.is_active ? v.name : `${v.name} (inactive)` }));
+  const data = await fetchAll((from, to) =>
+    supabase.from("villages").select("id, name, is_active").order("name").order("id").range(from, to),
+  );
+  return data.map((v) => ({ id: v.id, label: v.is_active ? v.name : `${v.name} (inactive)` }));
 }
 
 /** Labels for the given visit ids, from the picker options where possible. */
 async function visitLabels(supabase: Client, ids: string[], known: Option[]): Promise<Map<string, string>> {
   const labels = new Map(known.map((o) => [o.id, o.label]));
   const missing = [...new Set(ids)].filter((id) => !labels.has(id));
-  if (missing.length > 0) {
+  for (const ids of chunk(missing)) {
     const { data } = await supabase
       .from("visits")
       .select("id, visit_date, program_category, source, headcount")
-      .in("id", missing);
+      .in("id", ids);
     for (const v of data ?? []) labels.set(v.id, visitOptionLabel(v));
   }
   return labels;
@@ -66,30 +69,36 @@ export type TaxInvoiceRow = Tables<"tax_invoices"> & {
 };
 
 export async function loadProformaBalances(supabase: Client): Promise<ProformaBalance[]> {
-  const [{ data: invoices }, { data: taxInvoices }] = await Promise.all([
-    supabase
-      .from("proforma_invoices")
-      .select(
-        "id, pi_number, pi_date, status, billing_name, visit_id, grand_total, visits(visit_date, program_category, source, headcount)",
-      )
-      .in("status", ["issued", "paid"])
-      .order("pi_date", { ascending: false })
-      .limit(LIST_LIMIT),
-    supabase
-      .from("tax_invoices")
-      .select("proforma_invoice_id, amount")
-      .not("proforma_invoice_id", "is", null)
-      .limit(10 * LIST_LIMIT),
+  const [invoices, taxInvoices] = await Promise.all([
+    fetchAll((from, to) =>
+      supabase
+        .from("proforma_invoices")
+        .select(
+          "id, pi_number, pi_date, status, billing_name, visit_id, grand_total, visits(visit_date, program_category, source, headcount)",
+        )
+        .in("status", ["issued", "paid"])
+        .order("pi_date", { ascending: false })
+        .order("id")
+        .range(from, to),
+    ),
+    fetchAll((from, to) =>
+      supabase
+        .from("tax_invoices")
+        .select("proforma_invoice_id, amount")
+        .not("proforma_invoice_id", "is", null)
+        .order("id")
+        .range(from, to),
+    ),
   ]);
 
   const received = new Map<string, number>();
-  for (const t of taxInvoices ?? []) {
+  for (const t of taxInvoices) {
     if (t.proforma_invoice_id) {
       received.set(t.proforma_invoice_id, (received.get(t.proforma_invoice_id) ?? 0) + Number(t.amount));
     }
   }
 
-  return (invoices ?? []).map((inv) => {
+  return invoices.map((inv) => {
     const got = round2(received.get(inv.id) ?? 0);
     return {
       id: inv.id,
@@ -107,13 +116,15 @@ export async function loadProformaBalances(supabase: Client): Promise<ProformaBa
 }
 
 export async function loadTaxInvoices(supabase: Client, visitOptions: Option[]): Promise<TaxInvoiceRow[]> {
-  const { data } = await supabase
-    .from("tax_invoices")
-    .select("*, proforma_invoices(pi_number)")
-    .order("invoice_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(LIST_LIMIT);
-  const rows = data ?? [];
+  const rows = await fetchAll((from, to) =>
+    supabase
+      .from("tax_invoices")
+      .select("*, proforma_invoices(pi_number)")
+      .order("invoice_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to),
+  );
   const labels = await visitLabels(
     supabase,
     rows.map((r) => r.visit_id),
@@ -148,13 +159,15 @@ export async function loadPayouts(
   visitOptions: Option[],
   villageOptions: Option[],
 ): Promise<PayoutRow[]> {
-  const { data } = await supabase
-    .from("artisan_payouts")
-    .select("*")
-    .order("paid_on", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(LIST_LIMIT);
-  const rows = data ?? [];
+  const rows = await fetchAll((from, to) =>
+    supabase
+      .from("artisan_payouts")
+      .select("*")
+      .order("paid_on", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to),
+  );
   const labels = await visitLabels(
     supabase,
     rows.flatMap((r) => (r.visit_id ? [r.visit_id] : [])),
@@ -171,27 +184,44 @@ export async function loadPayouts(
 
 /** Completed trips whose "amount to artisans" isn't fully paid out yet. */
 export async function loadPendingPayouts(supabase: Client, villageOptions: Option[]): Promise<PendingPayout[]> {
-  const { data: visits } = await supabase
-    .from("visits")
-    .select("id, visit_date, program_category, source, headcount, amount_to_artisans")
-    .eq("status", "completed")
-    .gt("amount_to_artisans", 0)
-    .order("visit_date", { ascending: false, nullsFirst: false })
-    .limit(LIST_LIMIT);
-  const rows = visits ?? [];
+  const rows = await fetchAll((from, to) =>
+    supabase
+      .from("visits")
+      .select("id, visit_date, program_category, source, headcount, amount_to_artisans")
+      .eq("status", "completed")
+      .gt("amount_to_artisans", 0)
+      .order("visit_date", { ascending: false, nullsFirst: false })
+      .order("id")
+      .range(from, to),
+  );
   if (rows.length === 0) return [];
 
-  const ids = rows.map((v) => v.id);
-  const [{ data: payouts }, { data: villageRows }] = await Promise.all([
-    supabase.from("artisan_payouts").select("visit_id, amount").in("visit_id", ids),
-    supabase.from("visit_villages").select("visit_id, village_id").in("visit_id", ids),
-  ]);
+  const payouts: { visit_id: string | null; amount: number }[] = [];
+  const villageRows: { visit_id: string; village_id: string }[] = [];
+  for (const ids of chunk(rows.map((v) => v.id))) {
+    const [p, vv] = await Promise.all([
+      fetchAll((from, to) =>
+        supabase.from("artisan_payouts").select("visit_id, amount").in("visit_id", ids).order("id").range(from, to),
+      ),
+      fetchAll((from, to) =>
+        supabase
+          .from("visit_villages")
+          .select("visit_id, village_id")
+          .in("visit_id", ids)
+          .order("visit_id")
+          .order("village_id")
+          .range(from, to),
+      ),
+    ]);
+    payouts.push(...p);
+    villageRows.push(...vv);
+  }
   const paid = new Map<string, number>();
-  for (const p of payouts ?? []) {
+  for (const p of payouts) {
     if (p.visit_id) paid.set(p.visit_id, (paid.get(p.visit_id) ?? 0) + Number(p.amount));
   }
   const villagesByVisit = new Map<string, string[]>();
-  for (const row of villageRows ?? []) {
+  for (const row of villageRows) {
     villagesByVisit.set(row.visit_id, [...(villagesByVisit.get(row.visit_id) ?? []), row.village_id]);
   }
   const villageNames = new Map(villageOptions.map((v) => [v.id, v.label]));
@@ -230,13 +260,15 @@ export async function loadExpenses(
   visitOptions: Option[],
   villageOptions: Option[],
 ): Promise<ExpenseRow[]> {
-  const { data } = await supabase
-    .from("expenses")
-    .select("*")
-    .order("expense_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(LIST_LIMIT);
-  const rows = data ?? [];
+  const rows = await fetchAll((from, to) =>
+    supabase
+      .from("expenses")
+      .select("*")
+      .order("expense_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to),
+  );
   const labels = await visitLabels(
     supabase,
     rows.flatMap((r) => (r.visit_id ? [r.visit_id] : [])),
@@ -246,8 +278,8 @@ export async function loadExpenses(
 
   const paths = rows.flatMap((r) => (r.receipt_path ? [r.receipt_path] : []));
   const urls = new Map<string, string>();
-  if (paths.length > 0) {
-    const { data: signed } = await supabase.storage.from(RECEIPT_BUCKET).createSignedUrls(paths, 3600);
+  for (const batch of chunk(paths, 500)) {
+    const { data: signed } = await supabase.storage.from(RECEIPT_BUCKET).createSignedUrls(batch, 3600);
     for (const s of signed ?? []) if (s.path && s.signedUrl) urls.set(s.path, s.signedUrl);
   }
 
@@ -293,42 +325,54 @@ function monthsBetween(from: string, to: string): string[] {
 
 export async function loadFinanceOverview(supabase: Client, from: string, to: string): Promise<FinanceOverview> {
   const villageOptions = await loadVillageOptions(supabase);
-  const [
-    { data: invoices },
-    { data: sales },
-    { data: payments },
-    { data: payouts },
-    { data: expenses },
-    proformaBalances,
-    pending,
-  ] = await Promise.all([
-    supabase
-      .from("proforma_invoices")
-      .select("taxable_total, gst_total")
-      .in("status", ["issued", "paid"])
-      .gte("pi_date", from)
-      .lte("pi_date", to)
-      .limit(10 * LIST_LIMIT),
-    supabase
-      .from("visit_sales")
-      .select("channel, amount, visits!inner(visit_date, status)")
-      .eq("visits.status", "completed")
-      .gte("visits.visit_date", from)
-      .lte("visits.visit_date", to)
-      .limit(10 * LIST_LIMIT),
-    supabase
-      .from("tax_invoices")
-      .select("invoice_date, amount")
-      .gte("invoice_date", from)
-      .lte("invoice_date", to)
-      .limit(10 * LIST_LIMIT),
-    supabase.from("artisan_payouts").select("paid_on, amount").gte("paid_on", from).lte("paid_on", to).limit(10 * LIST_LIMIT),
-    supabase
-      .from("expenses")
-      .select("expense_date, category, amount")
-      .gte("expense_date", from)
-      .lte("expense_date", to)
-      .limit(10 * LIST_LIMIT),
+  const [invoices, sales, payments, payouts, expenses, proformaBalances, pending] = await Promise.all([
+    fetchAll((f, t) =>
+      supabase
+        .from("proforma_invoices")
+        .select("taxable_total, gst_total")
+        .in("status", ["issued", "paid"])
+        .gte("pi_date", from)
+        .lte("pi_date", to)
+        .order("id")
+        .range(f, t),
+    ),
+    fetchAll((f, t) =>
+      supabase
+        .from("visit_sales")
+        .select("channel, amount, visits!inner(visit_date, status)")
+        .eq("visits.status", "completed")
+        .gte("visits.visit_date", from)
+        .lte("visits.visit_date", to)
+        .order("id")
+        .range(f, t),
+    ),
+    fetchAll((f, t) =>
+      supabase
+        .from("tax_invoices")
+        .select("invoice_date, amount")
+        .gte("invoice_date", from)
+        .lte("invoice_date", to)
+        .order("id")
+        .range(f, t),
+    ),
+    fetchAll((f, t) =>
+      supabase
+        .from("artisan_payouts")
+        .select("paid_on, amount")
+        .gte("paid_on", from)
+        .lte("paid_on", to)
+        .order("id")
+        .range(f, t),
+    ),
+    fetchAll((f, t) =>
+      supabase
+        .from("expenses")
+        .select("expense_date, category, amount")
+        .gte("expense_date", from)
+        .lte("expense_date", to)
+        .order("id")
+        .range(f, t),
+    ),
     loadProformaBalances(supabase),
     loadPendingPayouts(supabase, villageOptions),
   ]);
@@ -336,16 +380,16 @@ export async function loadFinanceOverview(supabase: Client, from: string, to: st
   const sum = (rows: { amount: number | string }[] | null | undefined) =>
     round2((rows ?? []).reduce((s, r) => s + Number(r.amount), 0));
 
-  const ruralExperience = round2((invoices ?? []).reduce((s, i) => s + Number(i.taxable_total), 0));
-  const gst = round2((invoices ?? []).reduce((s, i) => s + Number(i.gst_total), 0));
-  const jrSales = sum((sales ?? []).filter((s) => s.channel === "jr_sales"));
-  const jrFarms = sum((sales ?? []).filter((s) => s.channel === "jr_farms"));
+  const ruralExperience = round2(invoices.reduce((s, i) => s + Number(i.taxable_total), 0));
+  const gst = round2(invoices.reduce((s, i) => s + Number(i.gst_total), 0));
+  const jrSales = sum(sales.filter((s) => s.channel === "jr_sales"));
+  const jrFarms = sum(sales.filter((s) => s.channel === "jr_farms"));
   const received = sum(payments);
   const paidOut = sum(payouts);
   const spent = sum(expenses);
 
   const byCategory = new Map<string, number>();
-  for (const e of expenses ?? []) byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + Number(e.amount));
+  for (const e of expenses) byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + Number(e.amount));
 
   const months = monthsBetween(from, to).map((month) => {
     const inMonth = <T,>(rows: T[] | null | undefined, key: (r: T) => string) =>
