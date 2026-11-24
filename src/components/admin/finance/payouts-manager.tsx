@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Plus, TrashBin } from "@gravity-ui/icons";
 import { Button, Input, Label, Modal, SearchField, Table, TextArea, TextField, toast } from "@heroui/react";
+import { exportArtisanPayouts } from "@/lib/actions/exports";
 import { deletePayout, savePayout } from "@/lib/actions/finance";
 import { PAYMENT_MODES, paymentModeLabel, type PaymentMode } from "@/lib/finance/constants";
 import type { Option, PayoutRow, PendingPayout } from "@/lib/finance/queries";
@@ -11,6 +12,7 @@ import { formatPiDate, formatRupees } from "@/lib/invoices/calc";
 import { todayIST } from "@/lib/visits/time";
 import { OptionSelect } from "../invoices/option-select";
 import { StatCard } from "../visits/stat-card";
+import { ExportButton } from "../export-button";
 import { ConfirmDelete } from "./confirm-delete";
 
 type FormTarget = { payout: PayoutRow | null; pending: PendingPayout | null };
@@ -217,13 +219,16 @@ export function PayoutsManager({
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">Payouts made</h2>
-          <SearchField aria-label="Search payouts" className="w-72" value={query} onChange={setQuery}>
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input placeholder="Search payee, trip, village…" />
-              <SearchField.ClearButton />
-            </SearchField.Group>
-          </SearchField>
+          <div className="flex flex-wrap items-center gap-3">
+            <SearchField aria-label="Search payouts" className="w-72" value={query} onChange={setQuery}>
+              <SearchField.Group>
+                <SearchField.SearchIcon />
+                <SearchField.Input placeholder="Search payee, trip, village…" />
+                <SearchField.ClearButton />
+              </SearchField.Group>
+            </SearchField>
+            <ExportButton onExport={() => exportArtisanPayouts()} />
+          </div>
         </div>
         {payouts.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted">
