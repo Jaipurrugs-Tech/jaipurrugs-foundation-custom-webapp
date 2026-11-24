@@ -1,24 +1,29 @@
 import { requireActiveTeamMember } from "@/lib/auth/session";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import { createClient } from "@/lib/supabase/server";
 import { LeadsWorkspace } from "@/components/admin/leads/leads-workspace";
 
 export const dynamic = "force-dynamic";
 
-const LEAD_PAGE_LIMIT = 1000;
 
 export default async function LeadsPage() {
   await requireActiveTeamMember();
   const supabase = await createClient();
 
-  const [{ data: leads }, { data: lists }, { data: attributes }, { data: memberships }] = await Promise.all([
-    supabase.from("leads").select("*").order("updated_at", { ascending: false }).limit(LEAD_PAGE_LIMIT),
+  // All leads and list memberships (paged past Supabase's 1,000-row response cap).
+  const [leads, { data: lists }, { data: attributes }, memberships] = await Promise.all([
+    fetchAll((from, to) =>
+      supabase.from("leads").select("*").order("updated_at", { ascending: false }).order("id").range(from, to),
+    ),
     supabase.from("lead_lists").select("*").order("name"),
     supabase.from("lead_attributes").select("*").order("created_at"),
-    supabase.from("lead_list_members").select("list_id, lead_id"),
+    fetchAll((from, to) =>
+      supabase.from("lead_list_members").select("list_id, lead_id").order("list_id").order("lead_id").range(from, to),
+    ),
   ]);
 
   const listIdsByLead = new Map<string, string[]>();
-  for (const m of memberships ?? []) {
+  for (const m of memberships) {
     listIdsByLead.set(m.lead_id, [...(listIdsByLead.get(m.lead_id) ?? []), m.list_id]);
   }
 
@@ -33,12 +38,12 @@ export default async function LeadsPage() {
       </div>
       <LeadsWorkspace
         attributes={attributes ?? []}
-        leads={(leads ?? []).map((lead) => ({ ...lead, listIds: listIdsByLead.get(lead.id) ?? [] }))}
+        leads={leads.map((lead) => ({ ...lead, listIds: listIdsByLead.get(lead.id) ?? [] }))}
         lists={(lists ?? []).map((list) => ({
           ...list,
-          memberCount: (memberships ?? []).filter((m) => m.list_id === list.id).length,
+          memberCount: memberships.filter((m) => m.list_id === list.id).length,
         }))}
-        truncated={(leads ?? []).length === LEAD_PAGE_LIMIT}
+        truncated={false}
       />
     </div>
   );

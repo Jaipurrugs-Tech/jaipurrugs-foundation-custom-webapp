@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireActiveTeamMember } from "@/lib/auth/session";
+import { fetchAll } from "@/lib/supabase/fetch-all";
 import type { Json } from "@/lib/types/supabase";
 
 export type AnswerInput = {
@@ -419,23 +420,28 @@ export async function exportSubmissionsCsv(formId: string) {
 
   const activeFields = (fields ?? []).filter((f) => f.type !== "section");
 
-  const { data: submissions } = await supabase
-    .from("form_submissions")
-    .select(`
-      id,
-      submitter_token,
-      status,
-      completed_at,
-      created_at,
-      form_answers (
-        field_id,
-        value,
-        field_snapshot
-      )
-    `)
-    .eq("form_id", formId)
-    .eq("status", "completed")
-    .order("completed_at", { ascending: false });
+  // Every completed submission, paging past the 1,000-row response cap.
+  const submissions = await fetchAll((from, to) =>
+    supabase
+      .from("form_submissions")
+      .select(`
+        id,
+        submitter_token,
+        status,
+        completed_at,
+        created_at,
+        form_answers (
+          field_id,
+          value,
+          field_snapshot
+        )
+      `)
+      .eq("form_id", formId)
+      .eq("status", "completed")
+      .order("completed_at", { ascending: false })
+      .order("id")
+      .range(from, to),
+  );
 
   // Helper to escape CSV fields
   const escapeCsv = (val: string | number | boolean | null | undefined) => {
@@ -509,15 +515,31 @@ export async function getFormMetricsData(formId: string) {
     .is("deleted_at", null)
     .order("position", { ascending: true });
 
-  const { data: submissions } = await supabase
-    .from("form_submissions")
-    .select("id, status, created_at, completed_at")
-    .eq("form_id", formId);
-
-  const { data: answers } = await supabase
-    .from("form_answers")
-    .select("id, submission_id, field_id, value, field_snapshot, created_at")
-    .in("submission_id", (submissions ?? []).map((s) => s.id));
+  // All submissions and answers for this form. Answers are filtered through a join
+  // on the form (not a long id list in the URL) and both are paged past 1,000 rows.
+  const [submissions, answerRows] = await Promise.all([
+    fetchAll((from, to) =>
+      supabase
+        .from("form_submissions")
+        .select("id, status, created_at, completed_at")
+        .eq("form_id", formId)
+        .order("id")
+        .range(from, to),
+    ),
+    fetchAll((from, to) =>
+      supabase
+        .from("form_answers")
+        .select("id, submission_id, field_id, value, field_snapshot, created_at, form_submissions!inner(form_id)")
+        .eq("form_submissions.form_id", formId)
+        .order("id")
+        .range(from, to),
+    ),
+  ]);
+  const answers = answerRows.map((row) => {
+    const { form_submissions: joined, ...answer } = row;
+    void joined; // only used to filter by form
+    return answer;
+  });
 
   const totalSubmissions = submissions?.length ?? 0;
   const completedSubmissions = (submissions ?? []).filter((s) => s.status === "completed");
