@@ -6,14 +6,14 @@ import { fetchAll } from "@/lib/supabase/fetch-all";
 type Client = SupabaseClient<Database>;
 
 export type ReviewRating = {
-  /** Average star rating (1–5) across every synced review that has one; null when none do. */
-  average: number | null;
+  /** Average star rating rescaled to 10 (stars × 2), one decimal; null when no review has stars. */
+  outOf10: number | null;
   /** Reviews with a star rating. */
   rated: number;
 };
 
 /**
- * The dashboard's "NPS" tile: the average star rating of all public reviews
+ * The dashboard's "NPS" tile: the average star rating, shown out of 10, of all public reviews
  * (Airbnb + TripAdvisor) on Partners → Reviews. All-time, like that page, so the
  * two always agree; reviews without stars are left out of the average.
  */
@@ -23,7 +23,7 @@ export async function loadReviewRating(supabase: Client): Promise<ReviewRating> 
   );
   const ratings = rows.map((r) => r.rating).filter((n): n is number => typeof n === "number");
   return {
-    average: ratings.length === 0 ? null : Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10,
+    outOf10: ratings.length === 0 ? null : Math.round(((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 2) * 10) / 10,
     rated: ratings.length,
   };
 }

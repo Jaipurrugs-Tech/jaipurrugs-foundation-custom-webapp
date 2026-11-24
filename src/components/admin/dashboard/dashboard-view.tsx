@@ -59,13 +59,13 @@ function ChartCard({
 function NpsCard({ rating }: { rating: ReviewRating | null }) {
   const href = "/partners?tab=reviews";
   if (!rating) return <StatCard compact href={href} label="NPS" value="—" hint="Could not be loaded" />;
-  if (rating.average === null) return <StatCard compact href={href} label="NPS" value="—" hint="No reviews yet" />;
+  if (rating.outOf10 === null) return <StatCard compact href={href} label="NPS" value="—" hint="No reviews yet" />;
   return (
     <StatCard
       compact
       href={href}
       label="NPS"
-      value={`${rating.average.toFixed(1)} / 5`}
+      value={`${rating.outOf10.toFixed(1)} / 10`}
       hint={`★ avg of ${rating.rated} review${rating.rated === 1 ? "" : "s"}`}
     />
   );
