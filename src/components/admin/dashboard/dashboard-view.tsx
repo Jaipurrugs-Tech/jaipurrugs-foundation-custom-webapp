@@ -18,8 +18,8 @@ import { DashboardFilters } from "./dashboard-filters";
 import { NeedsAttention } from "./needs-attention";
 import { formatNps, type NpsResult } from "@/lib/dashboard/nps-score";
 
-/** Small tiles that keep their size instead of stretching across the page. */
-const TILE_GRID = "grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(10.5rem,13.5rem))]";
+/** Equal-width tile columns; on wide screens Operations (4) and Reach (3) share one row, so 7 tiles fill it. */
+const TILE_GRID = "grid grid-cols-2 gap-3";
 
 function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -170,8 +170,9 @@ export function DashboardView({
         </div>
       ) : null}
 
+      <div className="grid gap-8 xl:grid-cols-[4fr_3fr] xl:gap-3">
       <Section title="Operations" description="What needs attention now.">
-        <div className={TILE_GRID}>
+        <div className={`${TILE_GRID} sm:grid-cols-4`}>
           <StatCard compact label="Upcoming visits" value={operations.upcoming_visits} hint={`${operations.upcoming_guests} guests`} />
           <StatCard compact label="Completed" value={operations.completed_in_range} hint="in period" />
           {quality.avg_rating === null || quality.feedback_count === 0 ? (
@@ -188,8 +189,8 @@ export function DashboardView({
         </div>
       </Section>
 
-      <Section title="Reach & economic value">
-        <div className={TILE_GRID}>
+      <Section title="Reach & economic value" description="Completed visits in the period.">
+        <div className={`${TILE_GRID} sm:grid-cols-3`}>
           <StatCard compact label="Visitors" value={reach.visitors} hint={`${reach.visits} visits`} />
           <StatCard compact label="Total income" value={formatInr(economic.total_income)} hint="tax invoices incl. GST, else PIs" />
           <StatCard
@@ -199,6 +200,10 @@ export function DashboardView({
             hint={economic.pct_to_artisans === null ? undefined : `${economic.pct_to_artisans}% of income`}
           />
         </div>
+      </Section>
+      </div>
+
+      <section className="-mt-3 flex flex-col gap-3">
         <div className="grid gap-4 lg:grid-cols-2">
           <ChartCard hint="charged vs paid to artisan families" title="Income by month">
             <IncomeBarChart data={economic.monthly} />
@@ -218,7 +223,7 @@ export function DashboardView({
             <RankedBarChart color="var(--chart-4)" data={reach.by_village} />
           </ChartCard>
         </div>
-      </Section>
+      </section>
 
       {revenue ? (
         <>
