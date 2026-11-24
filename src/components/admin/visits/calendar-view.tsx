@@ -133,7 +133,7 @@ export function VisitsCalendar({
                 onClick={() => setSelectedDay(isSelected ? null : day)}
               >
                 <button
-                  aria-label={`${formatLongDate(day)}${dayVisits.length ? `, ${dayVisits.length} visit${dayVisits.length === 1 ? "" : "s"}` : ""}`}
+                  aria-label={`${formatLongDate(day)}${dayVisits.length ? `, ${dayVisits.length} trip${dayVisits.length === 1 ? "" : "s"}` : ""}`}
                   className={`inline-flex size-6 items-center justify-center rounded-full text-xs ${
                     isToday ? "bg-accent font-semibold text-accent-foreground" : inMonth ? "text-foreground" : "text-muted/60"
                   }`}
@@ -179,7 +179,7 @@ export function VisitsCalendar({
             <h3 className="text-sm font-semibold">{formatLongDate(selectedDay)}</h3>
             <Button size="sm" variant="secondary" onPress={() => onAddVisit(selectedDay)}>
               <Plus className="size-4" />
-              Add visit on this day
+              Add trip on this day
             </Button>
           </div>
           {selectedVisits.length === 0 ? (
@@ -212,7 +212,7 @@ export function VisitsCalendar({
           )}
         </div>
       ) : (
-        <p className="text-sm text-muted">Click a visit to see its details, or a day to list everything on it.</p>
+        <p className="text-sm text-muted">Click a trip to see its details, or a day to list everything on it.</p>
       )}
     </div>
   );

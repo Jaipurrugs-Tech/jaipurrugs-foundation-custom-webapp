@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button, Chip, SearchField, Switch, toast } from "@heroui/react";
 import {
   getConversationList,
@@ -124,6 +124,9 @@ export function InboxView({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [conversations, setConversations] = useState(serverConversations);
+  // Phones show one pane at a time: the list, or (after picking one, or a ?c= link) the open thread.
+  const searchParams = useSearchParams();
+  const [mobileThread, setMobileThread] = useState(() => searchParams.has("c"));
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeId = thread?.conversation.id ?? null;
@@ -193,9 +196,11 @@ export function InboxView({
 
   // The chat that is open is being read, so new inbound messages in it never count as unread.
   const activeUnread = conversations.find((c) => c.id === activeId)?.unread_count ?? 0;
+  // On phones the thread is only "open" while it is the pane on screen, not behind the list.
   useEffect(() => {
-    if (activeId && activeUnread > 0) void markConversationRead(activeId);
-  }, [activeId, activeUnread]);
+    const threadVisible = mobileThread || window.matchMedia("(min-width: 768px)").matches;
+    if (activeId && activeUnread > 0 && threadVisible) void markConversationRead(activeId);
+  }, [activeId, activeUnread, mobileThread]);
 
   const liveConversation = conversations.find((c) => c.id === activeId) ?? thread?.conversation ?? null;
 
@@ -214,6 +219,7 @@ export function InboxView({
 
   function openConversation(conversation: InboxConversation) {
     if (conversation.unread_count > 0) void markConversationRead(conversation.id);
+    setMobileThread(true);
     router.push(`${pathname}?c=${conversation.id}`);
   }
 
@@ -221,9 +227,9 @@ export function InboxView({
     <div className="sticky top-0 flex h-full flex-col">
       <InboxToolbar agentConfigured={agentConfigured} autoReplyEnabled={autoReplyEnabled} webhook={webhook} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)_320px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[300px_minmax(0,1fr)_320px]">
         {/* Conversation list */}
-        <aside className="flex min-h-0 flex-col border-r border-border/60">
+        <aside className={`min-h-0 flex-col border-border/60 md:flex md:border-r ${mobileThread ? "hidden" : "flex"}`}>
           <div className="flex flex-col gap-2 p-3">
             <SearchField aria-label="Search conversations" value={query} onChange={setQuery}>
               <SearchField.Group>
@@ -303,13 +309,14 @@ export function InboxView({
         </aside>
 
         {/* Thread */}
-        <section className="flex min-h-0 flex-col">
+        <section className={`min-h-0 flex-col md:flex ${mobileThread ? "flex" : "hidden"}`}>
           {thread && liveConversation ? (
             <ThreadPanel
               key={thread.conversation.id}
               autoReplyEnabled={autoReplyEnabled && agentConfigured}
               conversation={liveConversation}
               thread={thread}
+              onBack={() => setMobileThread(false)}
             />
           ) : (
             <div className="m-auto text-sm text-muted">Select a conversation.</div>
@@ -317,7 +324,7 @@ export function InboxView({
         </section>
 
         {/* Contact profile */}
-        <aside className="min-h-0 overflow-y-auto border-l border-border/60">
+        <aside className="hidden min-h-0 overflow-y-auto border-l border-border/60 md:block">
           {thread ? <ContactProfile key={thread.conversation.id} thread={thread} /> : null}
         </aside>
       </div>

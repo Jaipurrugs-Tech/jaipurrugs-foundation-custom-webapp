@@ -150,7 +150,7 @@ export function RuleForm({
         </Select.Trigger>
         <Description>
           {templatesError ??
-            "Outside the 24-hour window only approved templates can be sent. Use a Utility template; one whose variables use the \"Visit: …\" fields is filled from the visit automatically."}
+            "Outside the 24-hour window only approved templates can be sent. Use a Utility template; one whose variables use the \"Visit: …\" fields is filled from the trip automatically."}
         </Description>
         <Select.Popover>
           <ListBox>
@@ -168,7 +168,7 @@ export function RuleForm({
         <p className="rounded-xl bg-neutral-50 p-3 text-sm text-muted whitespace-pre-wrap">{chosen.bodyText}</p>
       ) : null}
       {chosen && !chosen.usesVisitFields ? (
-        <p className="text-xs text-muted">This template doesn&apos;t use any visit fields, so every guest receives the same text.</p>
+        <p className="text-xs text-muted">This template doesn&apos;t use any trip fields, so every guest receives the same text.</p>
       ) : null}
 
       <Switch isSelected={enabled} onChange={setEnabled}>

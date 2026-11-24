@@ -11,15 +11,17 @@ export function FilterSelect({
   onChange,
   allLabel,
   options,
+  className = "w-44",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   allLabel: string;
   options: readonly { id: string; label: string }[];
+  className?: string;
 }) {
   return (
-    <Select className="w-44" value={value} onChange={(key) => onChange(String(key ?? ALL))}>
+    <Select className={className} value={value} onChange={(key) => onChange(String(key ?? ALL))}>
       <Label>{label}</Label>
       <Select.Trigger>
         <Select.Value />

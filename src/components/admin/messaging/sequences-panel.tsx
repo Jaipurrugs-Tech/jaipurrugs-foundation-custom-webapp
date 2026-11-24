@@ -62,21 +62,21 @@ function SequenceForm({ set, onSaved }: { set: RuleSetRow | null; onSaved: () =>
     <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
       <TextField isRequired value={name} onChange={setName}>
         <Label>Name</Label>
-        <Input placeholder="e.g. Rural Experience — after the visit" />
+        <Input placeholder="e.g. Rural Experience — after the trip" />
       </TextField>
       <TextField value={description} onChange={setDescription}>
         <Label>Description</Label>
         <Input placeholder="Optional" />
       </TextField>
       <TextField value={visitType} onChange={setVisitType}>
-        <Label>Apply automatically to visits of program</Label>
+        <Label>Apply automatically to trips of program</Label>
         <Input list="sequence-program-suggestions" placeholder="e.g. Rural Experience (leave empty to apply by hand)" />
         <datalist id="sequence-program-suggestions">
           {PROGRAM_CATEGORIES.map((p) => (
             <option key={p.id} value={p.label} />
           ))}
         </datalist>
-        <Description>New visits of exactly this program get these messages as soon as they are created.</Description>
+        <Description>New trips of exactly this program get these messages as soon as they are created.</Description>
       </TextField>
       {error ? <p className="text-sm text-danger">{error}</p> : null}
       <Button fullWidth isPending={isPending} type="submit">
@@ -132,8 +132,8 @@ export function SequencesPanel({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <p className="max-w-2xl text-sm text-muted">
-          A sequence is a reusable set of timed WhatsApp messages (for example a thank-you three hours after a visit). It is
-          copied onto a visit, so editing a sequence later never changes messages already scheduled for a visit.
+          A sequence is a reusable set of timed WhatsApp messages (for example a thank-you three hours after a trip). It is
+          copied onto a trip, so editing a sequence later never changes messages already scheduled for a trip.
         </p>
         <Button onPress={() => openSet(null)}>
           <Plus className="size-4" />
@@ -290,7 +290,7 @@ export function SequencesPanel({
                 <AlertDialog.Heading>Delete &ldquo;{pendingDelete?.name}&rdquo;?</AlertDialog.Heading>
               </AlertDialog.Header>
               <AlertDialog.Body>
-                <p>The sequence and its messages are removed. Visits that already received copies keep them.</p>
+                <p>The sequence and its messages are removed. Trips that already received copies keep them.</p>
               </AlertDialog.Body>
               <AlertDialog.Footer>
                 <Button slot="close" variant="tertiary">

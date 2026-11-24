@@ -39,9 +39,9 @@ export default async function MessagingPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">Visit messages</h1>
+        <h1 className="text-xl font-semibold">Trip messages</h1>
         <p className="text-sm text-muted">
-          WhatsApp messages sent to a visit&apos;s guests on a schedule — reminders before, a thank-you and feedback link after.
+          WhatsApp messages sent to a trip&apos;s guests on a schedule — reminders before, a thank-you and feedback link after.
           Status:{" "}
           <strong>{!settings?.sends_enabled ? "off (nothing is sent)" : settings.dry_run ? "dry run (nothing is sent)" : "live"}</strong>
           .
